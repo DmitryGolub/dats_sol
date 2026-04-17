@@ -2,15 +2,9 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
 
-from api.models import (
-    Command,
-    EnemyPlantation,
-    GameState,
-    Plantation,
-    Position,
-)
+from api.models import Command, GameState, Plantation, Position
+from api.helpers import Pathfinder
 from strategy.base import BaseStrategy
 
 log = logging.getLogger("bot.current")
@@ -22,14 +16,7 @@ UPGRADE_PRIORITY = [
     "max_hp",
     "repair_power",
     "vision_range",
-    "earthquake_mitigation",
 ]
-
-DEFAULT_AR = 2
-BE = 5
-SE = 5
-LODGE_REGEN = 5
-TS = 5
 
 
 def _adjacent(pos: Position) -> list[Position]:
@@ -37,27 +24,12 @@ def _adjacent(pos: Position) -> list[Position]:
     return [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
 
 
-def _cheb(a: Position, b: Position) -> int:
+def _chebyshev(a: Position, b: Position) -> int:
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
 
 
 def _is_reinforced(pos: Position) -> bool:
     return pos[0] % 7 == 0 and pos[1] % 7 == 0
-
-
-@dataclass
-class Context:
-    hq: Plantation
-    max_hp: int
-    signal_range: int
-    own_positions: set[Position]
-    plant_by_pos: dict[Position, Plantation]
-    construction_positions: set[Position]
-    enemy_by_pos: dict[Position, EnemyPlantation]
-    lodges: list = field(default_factory=list)
-    storm_danger: set[Position] = field(default_factory=set)
-    terra_by_pos: dict[Position, int] = field(default_factory=dict)
-    turns_to_die: dict[Position, int] = field(default_factory=dict)
 
 
 class CurrentBot(BaseStrategy):
@@ -66,6 +38,7 @@ class CurrentBot(BaseStrategy):
     def __init__(self) -> None:
         self._mountains: set[Position] = set()
         self._map_size: tuple[int, int] = (0, 0)
+        self._reinforced: set[Position] = set()
         self._initialized = False
 
     def reset(self) -> None:
@@ -73,85 +46,52 @@ class CurrentBot(BaseStrategy):
 
     def decide(self, state: GameState) -> Command:
         cmd = Command()
+
         if not state.plantations:
             return cmd
+
         if not self._initialized:
             self._init(state)
 
-        ctx = self._build_context(state)
-        self._apply_upgrade(state, cmd, ctx)
+        self._apply_upgrade(state, cmd)
 
+        own_positions = {p.position for p in state.plantations}
+        plant_by_pos = {p.position: p for p in state.plantations}
+        construction_positions = {c.position for c in state.constructions}
+
+        hq = next((p for p in state.plantations if p.is_main), None)
+        if hq is None:
+            return cmd
+
+        max_hp = self._get_max_hp(state)
         assigned: set[Position] = set()
         exit_usage: dict[Position, int] = defaultdict(int)
 
-        self._proactive_relocate_hq(state, cmd, ctx)
-        self._assign_repairs(state, cmd, assigned, exit_usage, ctx)
-        self._assign_builds(state, cmd, assigned, exit_usage, ctx)
+        self._assign_repairs(state, cmd, assigned, exit_usage, plant_by_pos, own_positions, max_hp, hq)
+        self._assign_builds(state, cmd, assigned, exit_usage, plant_by_pos, own_positions, construction_positions, hq)
+        self._maybe_relocate_hq(state, cmd, hq, own_positions)
 
         return cmd
 
     def _init(self, state: GameState) -> None:
         self._mountains = set(state.mountains)
         self._map_size = state.map_size
+        w, h = self._map_size
+        self._reinforced = set()
+        for x in range(0, w, 7):
+            for y in range(0, h, 7):
+                if (x, y) not in self._mountains:
+                    self._reinforced.add((x, y))
         self._initialized = True
 
-    def _build_context(self, state: GameState) -> Context:
-        own_positions = {p.position for p in state.plantations}
-        plant_by_pos = {p.position: p for p in state.plantations}
-        construction_positions = {c.position for c in state.constructions}
-        enemy_by_pos = {e.position: e for e in state.enemy_plantations}
-
-        hq = next((p for p in state.plantations if p.is_main), state.plantations[0])
-        max_hp = self._get_upgrade_val(state, "max_hp", 50, 10)
-        signal_range = self._get_upgrade_val(state, "signal_range", 3, 1)
-
-        storm_danger: set[Position] = set()
-        for ev in state.meteo_forecasts:
-            if ev.kind == "sandstorm":
-                for center in (ev.position, ev.next_position):
-                    if center is None or ev.radius is None:
-                        continue
-                    cx, cy = center
-                    r = ev.radius
-                    for dx in range(-r, r + 1):
-                        for dy in range(-r, r + 1):
-                            storm_danger.add((cx + dx, cy + dy))
-
-        terra_by_pos: dict[Position, int] = {}
-        for cell in state.terraformed_cells:
-            terra_by_pos[cell.position] = cell.terraformation_progress
-
-        turns_to_die: dict[Position, int] = {}
-        for pos in own_positions:
-            progress = terra_by_pos.get(pos, 0)
-            remaining_pct = 100 - progress
-            if remaining_pct <= 0:
-                turns_to_die[pos] = 0
-            else:
-                turns_to_die[pos] = remaining_pct // TS
-
-        return Context(
-            hq=hq,
-            max_hp=max_hp,
-            signal_range=signal_range,
-            own_positions=own_positions,
-            plant_by_pos=plant_by_pos,
-            construction_positions=construction_positions,
-            enemy_by_pos=enemy_by_pos,
-            lodges=list(state.beavers),
-            storm_danger=storm_danger,
-            terra_by_pos=terra_by_pos,
-            turns_to_die=turns_to_die,
-        )
-
-    def _get_upgrade_val(self, state: GameState, name: str, base: int, per_level: int) -> int:
+    def _get_max_hp(self, state: GameState) -> int:
         if state.plantation_upgrades:
             for t in state.plantation_upgrades.tiers:
-                if t.name == name:
-                    return base + t.current * per_level
-        return base
+                if t.name == "max_hp":
+                    return 50 + t.current * 10
+        return 50
 
-    def _apply_upgrade(self, state: GameState, cmd: Command, ctx: Context) -> None:
+    def _apply_upgrade(self, state: GameState, cmd: Command) -> None:
         upg = state.plantation_upgrades
         if upg is None or upg.points <= 0:
             return
@@ -162,60 +102,47 @@ class CurrentBot(BaseStrategy):
                 cmd.upgrade_plantation(name)
                 return
 
-    def _proactive_relocate_hq(self, state: GameState, cmd: Command, ctx: Context) -> None:
-        if len(state.plantations) < 2:
-            return
-
-        hq = ctx.hq
-        hq_ttd = ctx.turns_to_die.get(hq.position, 999)
-
-        if hq_ttd > 5:
-            return
-
-        best: Position | None = None
-        best_ttd = -1
-
-        for nb in _adjacent(hq.position):
-            if nb not in ctx.own_positions:
-                continue
-            nb_ttd = ctx.turns_to_die.get(nb, 999)
-            if nb_ttd > best_ttd:
-                best_ttd = nb_ttd
-                best = nb
-
-        if best is not None and best_ttd > hq_ttd:
-            cmd.relocate_main(hq.position, best)
-
     def _assign_repairs(
         self,
         state: GameState,
         cmd: Command,
         assigned: set[Position],
         exit_usage: dict[Position, int],
-        ctx: Context,
+        plant_by_pos: dict[Position, Plantation],
+        own_positions: set[Position],
+        max_hp: int,
+        hq: Plantation,
     ) -> None:
-        damaged = []
-        for p in state.plantations:
-            if p.is_isolated:
-                continue
-            ttd = ctx.turns_to_die.get(p.position, 999)
-            if ttd < 5:
-                continue
-            if p.hp < ctx.max_hp * 0.6:
-                priority = 0 if p.is_main else 1
-                damaged.append((priority, p.hp, p))
+        damaged = sorted(
+            [p for p in state.plantations if p.hp < max_hp * 0.7 and not p.is_isolated],
+            key=lambda p: (0 if p.is_main else 1, p.hp),
+        )
 
-        for _, _, target in sorted(damaged):
-            worker = self._find_best_worker(target.position, state, assigned, exit_usage, ctx)
-            if worker is None:
-                continue
-            pos, exit_pt = worker
-            assigned.add(pos)
-            exit_usage[exit_pt] += 1
-            if exit_pt == pos:
-                cmd.repair(pos, target.position)
-            else:
-                cmd.repair_via(pos, exit_pt, target.position)
+        for target in damaged:
+            best_repairer: Position | None = None
+            best_exit: Position | None = None
+            best_key = (999, 999)
+
+            for p in state.plantations:
+                if p.position in assigned or p.is_isolated or p.position == target.position:
+                    continue
+                exit_point = self._find_exit_point(p.position, target.position, own_positions, state, exit_usage)
+                if exit_point is None:
+                    continue
+                dist = _chebyshev(p.position, target.position)
+                key = (exit_usage[exit_point], dist)
+                if key < best_key:
+                    best_key = key
+                    best_repairer = p.position
+                    best_exit = exit_point
+
+            if best_repairer is not None and best_exit is not None:
+                assigned.add(best_repairer)
+                exit_usage[best_exit] += 1
+                if best_exit != best_repairer:
+                    cmd.repair_via(best_repairer, best_exit, target.position)
+                else:
+                    cmd.repair(best_repairer, target.position)
 
     def _assign_builds(
         self,
@@ -223,57 +150,77 @@ class CurrentBot(BaseStrategy):
         cmd: Command,
         assigned: set[Position],
         exit_usage: dict[Position, int],
-        ctx: Context,
+        plant_by_pos: dict[Position, Plantation],
+        own_positions: set[Position],
+        construction_positions: set[Position],
+        hq: Plantation,
     ) -> None:
-        frontier = self._score_frontier(state, ctx)
-        target_builders: dict[Position, int] = defaultdict(int)
+        frontier = self._score_frontier(state, own_positions, construction_positions, hq)
 
-        for target_pos, _score in frontier:
-            if target_builders[target_pos] >= 3:
+        target_assignments: dict[Position, int] = defaultdict(int)
+
+        for target_pos, score in frontier:
+            if target_assignments[target_pos] >= 3:
                 continue
 
-            worker = self._find_best_worker(target_pos, state, assigned, exit_usage, ctx)
-            if worker is None:
-                continue
+            best_builder: Position | None = None
+            best_exit: Position | None = None
+            best_key = (999, 999)
 
-            pos, exit_pt = worker
-            assigned.add(pos)
-            exit_usage[exit_pt] += 1
-            target_builders[target_pos] += 1
-            if exit_pt == pos:
-                cmd.build(pos, target_pos)
-            else:
-                cmd.build_via(pos, exit_pt, target_pos)
+            for p in state.plantations:
+                if p.position in assigned or p.is_isolated:
+                    continue
+                exit_point = self._find_exit_point(p.position, target_pos, own_positions, state, exit_usage)
+                if exit_point is None:
+                    continue
+                dist = _chebyshev(p.position, target_pos)
+                key = (exit_usage[exit_point], dist)
+                if key < best_key:
+                    best_key = key
+                    best_builder = p.position
+                    best_exit = exit_point
+
+            if best_builder is not None and best_exit is not None:
+                assigned.add(best_builder)
+                exit_usage[best_exit] += 1
+                target_assignments[target_pos] += 1
+                if best_exit == best_builder:
+                    cmd.build(best_builder, target_pos)
+                else:
+                    cmd.build_via(best_builder, best_exit, target_pos)
 
         for p in state.plantations:
             if p.position in assigned or p.is_isolated:
                 continue
-            best_target: Position | None = None
-            best_exit: Position | None = None
-            best_score = -1e9
+            chosen_target: Position | None = None
+            chosen_exit: Position | None = None
+            best_key = (999, 999)
             for target_pos, score in frontier:
-                if target_builders[target_pos] >= 3:
+                if target_assignments[target_pos] >= 3:
                     continue
-                exit_pt = self._find_exit_point(p.position, target_pos, ctx, exit_usage)
-                if exit_pt is None:
+                exit_point = self._find_exit_point(p.position, target_pos, own_positions, state, exit_usage)
+                if exit_point is None:
                     continue
-                if score > best_score:
-                    best_score = score
-                    best_target = target_pos
-                    best_exit = exit_pt
-            if best_target is not None and best_exit is not None:
+                key = (exit_usage[exit_point], -score)
+                if key < best_key:
+                    best_key = key
+                    chosen_target = target_pos
+                    chosen_exit = exit_point
+            if chosen_target is not None and chosen_exit is not None:
                 assigned.add(p.position)
-                exit_usage[best_exit] += 1
-                target_builders[best_target] += 1
-                if best_exit == p.position:
-                    cmd.build(p.position, best_target)
+                exit_usage[chosen_exit] += 1
+                target_assignments[chosen_target] += 1
+                if chosen_exit == p.position:
+                    cmd.build(p.position, chosen_target)
                 else:
-                    cmd.build_via(p.position, best_exit, best_target)
+                    cmd.build_via(p.position, chosen_exit, chosen_target)
 
     def _score_frontier(
         self,
         state: GameState,
-        ctx: Context,
+        own_positions: set[Position],
+        construction_positions: set[Position],
+        hq: Plantation,
     ) -> list[tuple[Position, float]]:
         w, h = self._map_size
         center = (w // 2, h // 2)
@@ -282,104 +229,147 @@ class CurrentBot(BaseStrategy):
         candidates: dict[Position, float] = {}
 
         for con in state.constructions:
-            score = 200.0 + con.progress * 3
+            score = 100.0 + con.progress * 2
             if _is_reinforced(con.position):
-                score += 80
+                score += 50
+            else:
+                rx = con.position[0] - con.position[0] % 7
+                ry = con.position[1] - con.position[1] % 7
+                best_r_dist = 999
+                for rfx in (rx, rx + 7):
+                    for rfy in (ry, ry + 7):
+                        if 0 <= rfx < w and 0 <= rfy < h and (rfx, rfy) not in self._mountains:
+                            d = max(abs(con.position[0] - rfx), abs(con.position[1] - rfy))
+                            if d < best_r_dist:
+                                best_r_dist = d
+                if best_r_dist == 1:
+                    score += 35
+                elif best_r_dist == 2:
+                    score += 18
+                elif best_r_dist == 3:
+                    score += 8
             candidates[con.position] = score
 
-        for pos, ttd in ctx.turns_to_die.items():
-            if ttd <= 12:
-                for nb in _adjacent(pos):
-                    if nb in ctx.own_positions or nb in self._mountains:
-                        continue
-                    if not (0 <= nb[0] < w and 0 <= nb[1] < h):
-                        continue
-                    if nb not in candidates:
-                        candidates[nb] = 0
-                    candidates[nb] += 40
-
-        for pos in ctx.own_positions:
+        for pos in own_positions:
             for nb in _adjacent(pos):
-                if nb in ctx.own_positions or nb in self._mountains or nb in candidates:
+                if nb in own_positions or nb in self._mountains or nb in candidates:
                     continue
                 if not (0 <= nb[0] < w and 0 <= nb[1] < h):
                     continue
-                if nb in ctx.storm_danger:
-                    continue
 
                 score = 0.0
-
                 if _is_reinforced(nb):
-                    score += 100
+                    score += 80
                 else:
-                    for n2 in _adjacent(nb):
-                        if 0 <= n2[0] < w and 0 <= n2[1] < h and _is_reinforced(n2):
-                            score += 40
-                            break
+                    rx = nb[0] - nb[0] % 7
+                    ry = nb[1] - nb[1] % 7
+                    best_r_dist = 999
+                    for rfx in (rx, rx + 7):
+                        for rfy in (ry, ry + 7):
+                            if 0 <= rfx < w and 0 <= rfy < h and (rfx, rfy) not in self._mountains:
+                                d = max(abs(nb[0] - rfx), abs(nb[1] - rfy))
+                                if d < best_r_dist:
+                                    best_r_dist = d
+                    if best_r_dist == 1:
+                        score += 35
+                    elif best_r_dist == 2:
+                        score += 18
+                    elif best_r_dist == 3:
+                        score += 8
 
                 dist_to_center = abs(nb[0] - center[0]) + abs(nb[1] - center[1])
                 score += 20 * (1 - dist_to_center / max_dist)
 
-                own_neighbors = sum(1 for n2 in _adjacent(nb) if n2 in ctx.own_positions)
-                if own_neighbors >= 2:
-                    score += 15
+                own_neighbors = sum(1 for n2 in _adjacent(nb) if n2 in own_positions)
                 if own_neighbors >= 3:
-                    score -= 10
+                    score -= 15
 
                 candidates[nb] = score
 
-        return sorted(candidates.items(), key=lambda x: -x[1])
-
-    def _find_best_worker(
-        self,
-        target: Position,
-        state: GameState,
-        assigned: set[Position],
-        exit_usage: dict[Position, int],
-        ctx: Context,
-    ) -> tuple[Position, Position] | None:
-        best: tuple[Position, Position] | None = None
-        best_key = (999, 999)
-
-        for p in state.plantations:
-            if p.position in assigned or p.is_isolated:
-                continue
-            exit_pt = self._find_exit_point(p.position, target, ctx, exit_usage)
-            if exit_pt is None:
-                continue
-            dist = _cheb(p.position, target)
-            key = (exit_usage.get(exit_pt, 0), dist)
-            if key < best_key:
-                best_key = key
-                best = (p.position, exit_pt)
-
-        return best
+        result = sorted(candidates.items(), key=lambda x: -x[1])
+        return result
 
     def _find_exit_point(
         self,
         author: Position,
         target: Position,
-        ctx: Context,
+        own_positions: set[Position],
+        state: GameState,
         exit_usage: dict[Position, int] | None = None,
     ) -> Position | None:
-        if _cheb(author, target) <= DEFAULT_AR:
+        if _chebyshev(author, target) <= state.action_range:
             return author
+
+        sr = 3
+        if state.plantation_upgrades:
+            for t in state.plantation_upgrades.tiers:
+                if t.name == "signal_range":
+                    sr = 3 + t.current
+                    break
 
         best: Position | None = None
         best_key = (999, 999)
 
-        for pos in ctx.own_positions:
+        for pos in own_positions:
             if pos == author:
                 continue
-            if _cheb(author, pos) > ctx.signal_range:
+            if _chebyshev(author, pos) > sr:
                 continue
-            if _cheb(pos, target) > DEFAULT_AR:
+            if _chebyshev(pos, target) > state.action_range:
                 continue
-            dist = _cheb(pos, target)
-            usage = exit_usage.get(pos, 0) if exit_usage is not None else 0
+            dist = _chebyshev(pos, target)
+            usage = exit_usage[pos] if exit_usage is not None else 0
             key = (usage, dist)
             if key < best_key:
                 best = pos
                 best_key = key
 
         return best
+
+    def _maybe_relocate_hq(
+        self,
+        state: GameState,
+        cmd: Command,
+        hq: Plantation,
+        own_positions: set[Position],
+    ) -> None:
+        if len(state.plantations) < 2:
+            return
+
+        terraform_progress = 0
+        for cell in state.terraformed_cells:
+            if cell.position == hq.position:
+                terraform_progress = cell.terraformation_progress
+                break
+
+        urgent = terraform_progress >= 85
+
+        hq_neighbors = sum(1 for nb in _adjacent(hq.position) if nb in own_positions)
+
+        if not urgent and hq_neighbors >= 2:
+            return
+        if not urgent and len(state.plantations) < 5:
+            return
+
+        best_candidate: Position | None = None
+        best_score = -1
+
+        for nb_pos in _adjacent(hq.position):
+            if nb_pos not in own_positions:
+                continue
+            nb_terraform = 0
+            for cell in state.terraformed_cells:
+                if cell.position == nb_pos:
+                    nb_terraform = cell.terraformation_progress
+                    break
+            if nb_terraform >= 90:
+                continue
+            neighbor_count = sum(1 for n2 in _adjacent(nb_pos) if n2 in own_positions)
+            score = neighbor_count * 10 + (100 - nb_terraform)
+            if score > best_score:
+                best_score = score
+                best_candidate = nb_pos
+
+        if best_candidate is not None:
+            if urgent or best_score >= 20:
+                cmd.relocate_main(hq.position, best_candidate)
