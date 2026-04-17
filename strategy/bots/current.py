@@ -11,10 +11,10 @@ log = logging.getLogger("bot.current")
 
 UPGRADE_PRIORITY = [
     "settlement_limit",
-    "max_hp",
-    "repair_power",
     "signal_range",
     "decay_mitigation",
+    "max_hp",
+    "repair_power",
     "vision_range",
 ]
 
