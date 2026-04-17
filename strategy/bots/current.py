@@ -232,6 +232,8 @@ class CurrentBot(BaseStrategy):
             score = 100.0 + con.progress * 2
             if _is_reinforced(con.position):
                 score += 50
+            elif any(_is_reinforced(n2) for n2 in _adjacent(con.position) if 0 <= n2[0] < w and 0 <= n2[1] < h):
+                score += 30
             candidates[con.position] = score
 
         for pos in own_positions:
