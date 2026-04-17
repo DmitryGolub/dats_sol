@@ -228,7 +228,13 @@ class CurrentBot(BaseStrategy):
 
         candidates: dict[Position, float] = {}
 
+        # Don't let the bot reinforce a construction sitting on (or under) an HQ cell
+        # that is close to completing terraformation — HQ dies if the cell hits 100%.
+        hq_progress = self._terraform_progress(state, hq.position)
+
         for con in state.constructions:
+            if con.position == hq.position and hq_progress > 80:
+                continue
             score = 100.0 + con.progress * 2
             if _is_reinforced(con.position):
                 score += 50
@@ -326,6 +332,12 @@ class CurrentBot(BaseStrategy):
 
         return best
 
+    def _terraform_progress(self, state: GameState, pos: Position) -> int:
+        for cell in state.terraformed_cells:
+            if cell.position == pos:
+                return cell.terraformation_progress
+        return 0
+
     def _maybe_relocate_hq(
         self,
         state: GameState,
@@ -336,40 +348,38 @@ class CurrentBot(BaseStrategy):
         if len(state.plantations) < 2:
             return
 
-        terraform_progress = 0
-        for cell in state.terraformed_cells:
-            if cell.position == hq.position:
-                terraform_progress = cell.terraformation_progress
-                break
-
-        urgent = terraform_progress >= 85
-
+        hq_progress = self._terraform_progress(state, hq.position)
         hq_neighbors = sum(1 for nb in _adjacent(hq.position) if nb in own_positions)
 
-        if not urgent and hq_neighbors >= 2:
-            return
-        if not urgent and len(state.plantations) < 5:
+        # Early return: HQ not in danger and sits on a well-connected cell
+        if hq_progress < 80 and hq_neighbors >= 2:
             return
 
         best_candidate: Position | None = None
         best_score = -1
+        best_neighbors = 0
 
         for nb_pos in _adjacent(hq.position):
             if nb_pos not in own_positions:
                 continue
-            nb_terraform = 0
-            for cell in state.terraformed_cells:
-                if cell.position == nb_pos:
-                    nb_terraform = cell.terraformation_progress
-                    break
-            if nb_terraform >= 90:
+            nb_progress = self._terraform_progress(state, nb_pos)
+            if nb_progress >= 95:
                 continue
             neighbor_count = sum(1 for n2 in _adjacent(nb_pos) if n2 in own_positions)
-            score = neighbor_count * 10 + (100 - nb_terraform)
+            score = (100 - nb_progress) + neighbor_count * 20
+            if neighbor_count >= 2:
+                score += 100
             if score > best_score:
                 best_score = score
                 best_candidate = nb_pos
+                best_neighbors = neighbor_count
 
-        if best_candidate is not None:
-            if urgent or best_score >= 20:
-                cmd.relocate_main(hq.position, best_candidate)
+        if best_candidate is None:
+            return
+
+        # Below 90%: require a well-connected target (≥2 own neighbors).
+        # At 90%+: forced move — HQ dies at 100%, so accept any adjacent own cell.
+        if hq_progress < 90 and best_neighbors < 2:
+            return
+
+        cmd.relocate_main(hq.position, best_candidate)
