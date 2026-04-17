@@ -3,11 +3,15 @@ from __future__ import annotations
 import random as _random
 
 from api.models import Position
-from .state import WorldState, SimPlantation, PlayerState, DEFAULT_MHP
-
-
-def is_reinforced(x: int, y: int) -> bool:
-    return x % 7 == 0 and y % 7 == 0
+from .state import (
+    DEFAULT_MHP,
+    LODGE_HP,
+    PlayerState,
+    SimBeaverLodge,
+    SimPlantation,
+    WorldState,
+    is_reinforced,
+)
 
 
 def generate_map(
@@ -16,14 +20,15 @@ def generate_map(
     height: int = 80,
     mountain_density: float = 0.08,
     num_players: int = 1,
+    lodge_density: float = 0.005,
 ) -> WorldState:
     rng = _random.Random(seed)
 
     spawn_points = _pick_spawns(width, height, num_players, rng)
     spawn_zones = set()
     for sx, sy in spawn_points:
-        for dx in range(-2, 3):
-            for dy in range(-2, 3):
+        for dx in range(-3, 4):
+            for dy in range(-3, 4):
                 spawn_zones.add((sx + dx, sy + dy))
 
     mountains: set[Position] = set()
@@ -33,7 +38,7 @@ def generate_map(
         x = rng.randint(0, width - 1)
         y = rng.randint(0, height - 1)
         attempts += 1
-        if is_reinforced(x, y):
+        if is_reinforced((x, y)):
             continue
         if (x, y) in spawn_zones:
             continue
@@ -43,6 +48,7 @@ def generate_map(
         turn_no=0,
         map_size=(width, height),
         mountains=mountains,
+        rng=rng,
     )
 
     for i, pos in enumerate(spawn_points):
@@ -59,6 +65,24 @@ def generate_map(
             created_turn=0,
         )
         world.players[pid] = PlayerState(player_id=pid)
+
+    # Логова бобров
+    num_lodges = int(width * height * lodge_density)
+    attempts = 0
+    placed_positions: set[Position] = set()
+    while len(placed_positions) < num_lodges and attempts < num_lodges * 20:
+        x = rng.randint(2, width - 3)
+        y = rng.randint(2, height - 3)
+        attempts += 1
+        if (x, y) in mountains or (x, y) in spawn_zones or (x, y) in placed_positions:
+            continue
+        placed_positions.add((x, y))
+        lid = world.next_lodge_id()
+        world.beaver_lodges[lid] = SimBeaverLodge(
+            id=lid,
+            position=(x, y),
+            hp=LODGE_HP,
+        )
 
     return world
 
