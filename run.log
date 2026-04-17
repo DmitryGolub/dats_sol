@@ -1,50 +1,31 @@
-21:20:43 [INFO] Соло-турнир: 2 ботов × 20 сидов = 40 партий
-21:20:43 [INFO] [1/40] current seed=1
-21:20:43 [INFO] [2/40] current seed=2
-21:20:43 [INFO] [3/40] current seed=3
-21:20:43 [INFO] [4/40] current seed=4
-21:20:43 [INFO] [5/40] current seed=5
-21:20:43 [INFO] [6/40] current seed=6
-21:20:43 [INFO] [7/40] current seed=7
-21:20:43 [INFO] [8/40] current seed=8
-21:20:43 [INFO] [9/40] current seed=9
-21:20:43 [INFO] [10/40] current seed=10
-21:20:44 [INFO] [11/40] current seed=11
-21:20:44 [INFO] [12/40] current seed=12
-21:20:44 [INFO] [13/40] current seed=13
-21:20:44 [INFO] [14/40] current seed=14
-21:20:44 [INFO] [15/40] current seed=15
-21:20:44 [INFO] [16/40] current seed=16
-21:20:44 [INFO] [17/40] current seed=17
-21:20:44 [INFO] [18/40] current seed=18
-21:20:44 [INFO] [19/40] current seed=19
-21:20:44 [INFO] [20/40] current seed=20
-21:20:44 [INFO] [21/40] v001 seed=1
-21:20:44 [INFO] [22/40] v001 seed=2
-21:20:44 [INFO] [23/40] v001 seed=3
-21:20:44 [INFO] [24/40] v001 seed=4
-21:20:44 [INFO] [25/40] v001 seed=5
-21:20:44 [INFO] [26/40] v001 seed=6
-21:20:44 [INFO] [27/40] v001 seed=7
-21:20:44 [INFO] [28/40] v001 seed=8
-21:20:44 [INFO] [29/40] v001 seed=9
-21:20:44 [INFO] [30/40] v001 seed=10
-21:20:44 [INFO] [31/40] v001 seed=11
-21:20:44 [INFO] [32/40] v001 seed=12
-21:20:44 [INFO] [33/40] v001 seed=13
-21:20:45 [INFO] [34/40] v001 seed=14
-21:20:45 [INFO] [35/40] v001 seed=15
-21:20:45 [INFO] [36/40] v001 seed=16
-21:20:45 [INFO] [37/40] v001 seed=17
-21:20:45 [INFO] [38/40] v001 seed=18
-21:20:45 [INFO] [39/40] v001 seed=19
-21:20:45 [INFO] [40/40] v001 seed=20
-21:20:45 [INFO] Результаты сохранены в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/runs.csv
-21:20:45 [INFO] Матрица сохранена в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/tournament_matrix.csv
+21:21:05 [INFO] Versus-турнир: 2 ботов × 20 сидов = 20 матчей
+21:21:05 [INFO] [1/20] seed=1: current vs v001
+21:21:05 [INFO] [2/20] seed=2: current vs v001
+21:21:05 [INFO] [3/20] seed=3: current vs v001
+21:21:05 [INFO] [4/20] seed=4: current vs v001
+21:21:05 [INFO] [5/20] seed=5: current vs v001
+21:21:05 [INFO] [6/20] seed=6: current vs v001
+21:21:05 [INFO] [7/20] seed=7: current vs v001
+21:21:05 [INFO] [8/20] seed=8: current vs v001
+21:21:05 [INFO] [9/20] seed=9: current vs v001
+21:21:05 [INFO] [10/20] seed=10: current vs v001
+21:21:05 [INFO] [11/20] seed=11: current vs v001
+21:21:06 [INFO] [12/20] seed=12: current vs v001
+21:21:06 [INFO] [13/20] seed=13: current vs v001
+21:21:06 [INFO] [14/20] seed=14: current vs v001
+21:21:06 [INFO] [15/20] seed=15: current vs v001
+21:21:06 [INFO] [16/20] seed=16: current vs v001
+21:21:06 [INFO] [17/20] seed=17: current vs v001
+21:21:06 [INFO] [18/20] seed=18: current vs v001
+21:21:06 [INFO] [19/20] seed=19: current vs v001
+21:21:06 [INFO] [20/20] seed=20: current vs v001
+21:21:06 [INFO] Результаты сохранены в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/runs.csv
+21:21:06 [INFO] Матрица сохранена в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/tournament_matrix.csv
 
 ======================================================================
 Бот                    Ср. очки      Мин     Макс  Пл.макс    Win%
 ----------------------------------------------------------------------
-current                   73185    35614   101983     26.7   75.0%
-v001                      65485    32371    82731     19.1   25.0%
+current                   70856    35614   101983     25.8   75.0%
+v001                      46819    32371    80656     14.2   25.0%
 ======================================================================
+Победитель: current
