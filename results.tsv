@@ -6,3 +6,4 @@ c20d98e	57508	30901	86684	keep	baseline
 cccfdad	64005	33075	83754	discard	reinforced distance bias hurt
 b9ed8c5	68883	32135	91173	keep	spread exits to avoid congestion
 ef0c9ab	69369	32135	91496	keep	reinforced-adjacent bonus for constructions
+11a1fa1	72707	35614	104562	keep	Chebyshev bonus to reinforced 1/2/3 steps

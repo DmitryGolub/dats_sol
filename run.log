@@ -1,50 +1,50 @@
-21:19:45 [INFO] Соло-турнир: 2 ботов × 20 сидов = 40 партий
-21:19:45 [INFO] [1/40] current seed=1
-21:19:45 [INFO] [2/40] current seed=2
-21:19:45 [INFO] [3/40] current seed=3
-21:19:45 [INFO] [4/40] current seed=4
-21:19:46 [INFO] [5/40] current seed=5
-21:19:46 [INFO] [6/40] current seed=6
-21:19:46 [INFO] [7/40] current seed=7
-21:19:46 [INFO] [8/40] current seed=8
-21:19:46 [INFO] [9/40] current seed=9
-21:19:46 [INFO] [10/40] current seed=10
-21:19:46 [INFO] [11/40] current seed=11
-21:19:46 [INFO] [12/40] current seed=12
-21:19:46 [INFO] [13/40] current seed=13
-21:19:46 [INFO] [14/40] current seed=14
-21:19:46 [INFO] [15/40] current seed=15
-21:19:46 [INFO] [16/40] current seed=16
-21:19:46 [INFO] [17/40] current seed=17
-21:19:46 [INFO] [18/40] current seed=18
-21:19:46 [INFO] [19/40] current seed=19
-21:19:46 [INFO] [20/40] current seed=20
-21:19:46 [INFO] [21/40] v001 seed=1
-21:19:46 [INFO] [22/40] v001 seed=2
-21:19:46 [INFO] [23/40] v001 seed=3
-21:19:46 [INFO] [24/40] v001 seed=4
-21:19:46 [INFO] [25/40] v001 seed=5
-21:19:46 [INFO] [26/40] v001 seed=6
-21:19:47 [INFO] [27/40] v001 seed=7
-21:19:47 [INFO] [28/40] v001 seed=8
-21:19:47 [INFO] [29/40] v001 seed=9
-21:19:47 [INFO] [30/40] v001 seed=10
-21:19:47 [INFO] [31/40] v001 seed=11
-21:19:47 [INFO] [32/40] v001 seed=12
-21:19:47 [INFO] [33/40] v001 seed=13
-21:19:47 [INFO] [34/40] v001 seed=14
-21:19:47 [INFO] [35/40] v001 seed=15
-21:19:47 [INFO] [36/40] v001 seed=16
-21:19:47 [INFO] [37/40] v001 seed=17
-21:19:47 [INFO] [38/40] v001 seed=18
-21:19:47 [INFO] [39/40] v001 seed=19
-21:19:47 [INFO] [40/40] v001 seed=20
-21:19:47 [INFO] Результаты сохранены в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/runs.csv
-21:19:47 [INFO] Матрица сохранена в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/tournament_matrix.csv
+21:20:43 [INFO] Соло-турнир: 2 ботов × 20 сидов = 40 партий
+21:20:43 [INFO] [1/40] current seed=1
+21:20:43 [INFO] [2/40] current seed=2
+21:20:43 [INFO] [3/40] current seed=3
+21:20:43 [INFO] [4/40] current seed=4
+21:20:43 [INFO] [5/40] current seed=5
+21:20:43 [INFO] [6/40] current seed=6
+21:20:43 [INFO] [7/40] current seed=7
+21:20:43 [INFO] [8/40] current seed=8
+21:20:43 [INFO] [9/40] current seed=9
+21:20:43 [INFO] [10/40] current seed=10
+21:20:44 [INFO] [11/40] current seed=11
+21:20:44 [INFO] [12/40] current seed=12
+21:20:44 [INFO] [13/40] current seed=13
+21:20:44 [INFO] [14/40] current seed=14
+21:20:44 [INFO] [15/40] current seed=15
+21:20:44 [INFO] [16/40] current seed=16
+21:20:44 [INFO] [17/40] current seed=17
+21:20:44 [INFO] [18/40] current seed=18
+21:20:44 [INFO] [19/40] current seed=19
+21:20:44 [INFO] [20/40] current seed=20
+21:20:44 [INFO] [21/40] v001 seed=1
+21:20:44 [INFO] [22/40] v001 seed=2
+21:20:44 [INFO] [23/40] v001 seed=3
+21:20:44 [INFO] [24/40] v001 seed=4
+21:20:44 [INFO] [25/40] v001 seed=5
+21:20:44 [INFO] [26/40] v001 seed=6
+21:20:44 [INFO] [27/40] v001 seed=7
+21:20:44 [INFO] [28/40] v001 seed=8
+21:20:44 [INFO] [29/40] v001 seed=9
+21:20:44 [INFO] [30/40] v001 seed=10
+21:20:44 [INFO] [31/40] v001 seed=11
+21:20:44 [INFO] [32/40] v001 seed=12
+21:20:44 [INFO] [33/40] v001 seed=13
+21:20:45 [INFO] [34/40] v001 seed=14
+21:20:45 [INFO] [35/40] v001 seed=15
+21:20:45 [INFO] [36/40] v001 seed=16
+21:20:45 [INFO] [37/40] v001 seed=17
+21:20:45 [INFO] [38/40] v001 seed=18
+21:20:45 [INFO] [39/40] v001 seed=19
+21:20:45 [INFO] [40/40] v001 seed=20
+21:20:45 [INFO] Результаты сохранены в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/runs.csv
+21:20:45 [INFO] Матрица сохранена в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/tournament_matrix.csv
 
 ======================================================================
 Бот                    Ср. очки      Мин     Макс  Пл.макс    Win%
 ----------------------------------------------------------------------
-current                   72707    35614   104562     26.1   70.0%
-v001                      65485    32371    82731     19.1   30.0%
+current                   73185    35614   101983     26.7   75.0%
+v001                      65485    32371    82731     19.1   25.0%
 ======================================================================
