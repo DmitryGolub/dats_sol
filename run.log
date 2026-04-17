@@ -1,31 +1,71 @@
-21:21:05 [INFO] Versus-турнир: 2 ботов × 20 сидов = 20 матчей
-21:21:05 [INFO] [1/20] seed=1: current vs v001
-21:21:05 [INFO] [2/20] seed=2: current vs v001
-21:21:05 [INFO] [3/20] seed=3: current vs v001
-21:21:05 [INFO] [4/20] seed=4: current vs v001
-21:21:05 [INFO] [5/20] seed=5: current vs v001
-21:21:05 [INFO] [6/20] seed=6: current vs v001
-21:21:05 [INFO] [7/20] seed=7: current vs v001
-21:21:05 [INFO] [8/20] seed=8: current vs v001
-21:21:05 [INFO] [9/20] seed=9: current vs v001
-21:21:05 [INFO] [10/20] seed=10: current vs v001
-21:21:05 [INFO] [11/20] seed=11: current vs v001
-21:21:06 [INFO] [12/20] seed=12: current vs v001
-21:21:06 [INFO] [13/20] seed=13: current vs v001
-21:21:06 [INFO] [14/20] seed=14: current vs v001
-21:21:06 [INFO] [15/20] seed=15: current vs v001
-21:21:06 [INFO] [16/20] seed=16: current vs v001
-21:21:06 [INFO] [17/20] seed=17: current vs v001
-21:21:06 [INFO] [18/20] seed=18: current vs v001
-21:21:06 [INFO] [19/20] seed=19: current vs v001
-21:21:06 [INFO] [20/20] seed=20: current vs v001
-21:21:06 [INFO] Результаты сохранены в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/runs.csv
-21:21:06 [INFO] Матрица сохранена в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/tournament_matrix.csv
+21:22:23 [INFO] Соло-турнир: 3 ботов × 20 сидов = 60 партий
+21:22:23 [INFO] [1/60] current seed=1
+21:22:23 [INFO] [2/60] current seed=2
+21:22:23 [INFO] [3/60] current seed=3
+21:22:23 [INFO] [4/60] current seed=4
+21:22:23 [INFO] [5/60] current seed=5
+21:22:23 [INFO] [6/60] current seed=6
+21:22:23 [INFO] [7/60] current seed=7
+21:22:24 [INFO] [8/60] current seed=8
+21:22:24 [INFO] [9/60] current seed=9
+21:22:24 [INFO] [10/60] current seed=10
+21:22:24 [INFO] [11/60] current seed=11
+21:22:24 [INFO] [12/60] current seed=12
+21:22:24 [INFO] [13/60] current seed=13
+21:22:24 [INFO] [14/60] current seed=14
+21:22:24 [INFO] [15/60] current seed=15
+21:22:24 [INFO] [16/60] current seed=16
+21:22:24 [INFO] [17/60] current seed=17
+21:22:24 [INFO] [18/60] current seed=18
+21:22:24 [INFO] [19/60] current seed=19
+21:22:24 [INFO] [20/60] current seed=20
+21:22:24 [INFO] [21/60] v001 seed=1
+21:22:24 [INFO] [22/60] v001 seed=2
+21:22:24 [INFO] [23/60] v001 seed=3
+21:22:24 [INFO] [24/60] v001 seed=4
+21:22:24 [INFO] [25/60] v001 seed=5
+21:22:24 [INFO] [26/60] v001 seed=6
+21:22:24 [INFO] [27/60] v001 seed=7
+21:22:25 [INFO] [28/60] v001 seed=8
+21:22:25 [INFO] [29/60] v001 seed=9
+21:22:25 [INFO] [30/60] v001 seed=10
+21:22:25 [INFO] [31/60] v001 seed=11
+21:22:25 [INFO] [32/60] v001 seed=12
+21:22:25 [INFO] [33/60] v001 seed=13
+21:22:25 [INFO] [34/60] v001 seed=14
+21:22:25 [INFO] [35/60] v001 seed=15
+21:22:25 [INFO] [36/60] v001 seed=16
+21:22:25 [INFO] [37/60] v001 seed=17
+21:22:25 [INFO] [38/60] v001 seed=18
+21:22:25 [INFO] [39/60] v001 seed=19
+21:22:25 [INFO] [40/60] v001 seed=20
+21:22:25 [INFO] [41/60] v002 seed=1
+21:22:25 [INFO] [42/60] v002 seed=2
+21:22:25 [INFO] [43/60] v002 seed=3
+21:22:25 [INFO] [44/60] v002 seed=4
+21:22:25 [INFO] [45/60] v002 seed=5
+21:22:25 [INFO] [46/60] v002 seed=6
+21:22:25 [INFO] [47/60] v002 seed=7
+21:22:25 [INFO] [48/60] v002 seed=8
+21:22:25 [INFO] [49/60] v002 seed=9
+21:22:25 [INFO] [50/60] v002 seed=10
+21:22:25 [INFO] [51/60] v002 seed=11
+21:22:26 [INFO] [52/60] v002 seed=12
+21:22:26 [INFO] [53/60] v002 seed=13
+21:22:26 [INFO] [54/60] v002 seed=14
+21:22:26 [INFO] [55/60] v002 seed=15
+21:22:26 [INFO] [56/60] v002 seed=16
+21:22:26 [INFO] [57/60] v002 seed=17
+21:22:26 [INFO] [58/60] v002 seed=18
+21:22:26 [INFO] [59/60] v002 seed=19
+21:22:26 [INFO] [60/60] v002 seed=20
+21:22:26 [INFO] Результаты сохранены в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/runs.csv
+21:22:26 [INFO] Матрица сохранена в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/tournament_matrix.csv
 
 ======================================================================
 Бот                    Ср. очки      Мин     Макс  Пл.макс    Win%
 ----------------------------------------------------------------------
-current                   70856    35614   101983     25.8   75.0%
-v001                      46819    32371    80656     14.2   25.0%
+current                   75885    36645   121310     29.1   45.0%
+v001                      65485    32371    82731     19.1   15.0%
+v002                      73185    35614   101983     26.7   40.0%
 ======================================================================
-Победитель: current
