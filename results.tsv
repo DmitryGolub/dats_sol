@@ -10,3 +10,4 @@ ef0c9ab	69369	32135	91496	keep	reinforced-adjacent bonus for constructions
 b8890f8	73185	35614	101983	keep	Chebyshev bonus for constructions too
 aa12e13	75885	36645	121310	keep	density bonus: +2 per own-neighbor
 eee2f7c	78914	36645	117252	keep	density bonus tuned to +5
+3a6ae0b	88713	735	136257	keep	HQ relocate proactive at 80% terraform, forced at 90%

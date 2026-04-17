@@ -128,6 +128,21 @@ class PlayerState:
     lost_plantations: int = 0
     beaver_kills: int = 0
     sabotage_kills: int = 0
+    respawns: int = 0
+    terraform_score: float = 0.0
+    kill_score: float = 0.0
+    built_plantations: int = 0
+    upgrades_purchased: int = 0
+    sabotage_damage_dealt: int = 0
+    sabotage_damage_taken: int = 0
+    storm_damage_taken: int = 0
+    earthquake_damage_taken: int = 0
+    lodge_damage_taken_hp: int = 0
+    sabotage_lost_plantations: int = 0
+    cataclysm_lost_plantations: int = 0
+    lodge_lost_plantations: int = 0
+    decay_lost_plantations: int = 0
+    limit_lost_plantations: int = 0
 
     def __post_init__(self) -> None:
         if not self.upgrade_levels:

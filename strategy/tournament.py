@@ -17,7 +17,20 @@ EXPERIMENTS_DIR = Path(__file__).parent / "experiments"
 RUNS_CSV = EXPERIMENTS_DIR / "runs.csv"
 MATRIX_CSV = EXPERIMENTS_DIR / "tournament_matrix.csv"
 
-CSV_FIELDS = ["timestamp", "seed", "bot", "score", "hq_lost_turn", "max_plantations", "cells_terraformed", "turns", "mode", "opponents"]
+CSV_FIELDS = [
+    "timestamp", "seed", "bot", "mode", "opponents", "turns",
+    "score", "terraform_score", "kill_score",
+    "hq_lost_turn", "respawns",
+    "max_plantations", "final_plantations", "built_plantations",
+    "cells_terraformed", "own_cells",
+    "lost_plantations",
+    "sabotage_lost_plantations", "cataclysm_lost_plantations",
+    "lodge_lost_plantations", "decay_lost_plantations", "limit_lost_plantations",
+    "sabotage_kills", "beaver_kills",
+    "sabotage_damage_dealt", "sabotage_damage_taken",
+    "storm_damage_taken", "earthquake_damage_taken", "lodge_damage_taken_hp",
+    "upgrades_purchased",
+]
 
 
 def run_tournament(
@@ -100,8 +113,9 @@ def _run_versus(
 
 def _save_results(results: list[dict]) -> None:
     EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
-    file_exists = RUNS_CSV.exists() and RUNS_CSV.stat().st_size > 0
+    _migrate_runs_header_if_needed()
 
+    file_exists = RUNS_CSV.exists() and RUNS_CSV.stat().st_size > 0
     with open(RUNS_CSV, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction="ignore")
         if not file_exists:
@@ -109,6 +123,29 @@ def _save_results(results: list[dict]) -> None:
         writer.writerows(results)
 
     log.info("Результаты сохранены в %s", RUNS_CSV)
+
+
+def _migrate_runs_header_if_needed() -> None:
+    """Если у существующего runs.csv заголовок не совпадает с CSV_FIELDS,
+    переписываем файл с новым заголовком, заполняя отсутствующие колонки пустыми значениями."""
+    if not RUNS_CSV.exists() or RUNS_CSV.stat().st_size == 0:
+        return
+    with open(RUNS_CSV, newline="") as f:
+        reader = csv.reader(f)
+        try:
+            existing_header = next(reader)
+        except StopIteration:
+            return
+        if existing_header == CSV_FIELDS:
+            return
+        rows = [dict(zip(existing_header, row)) for row in reader]
+
+    with open(RUNS_CSV, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({k: row.get(k, "") for k in CSV_FIELDS})
+    log.info("runs.csv: миграция заголовка (%d → %d колонок)", len(existing_header), len(CSV_FIELDS))
 
 
 def _generate_matrix(results: list[dict], bot_names: list[str], seeds: list[int]) -> None:

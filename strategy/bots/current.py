@@ -287,6 +287,7 @@ class CurrentBot(BaseStrategy):
                 score += 20 * (1 - dist_to_center / max_dist)
 
                 own_neighbors = sum(1 for n2 in _adjacent(nb) if n2 in own_positions)
+                score += own_neighbors * 2
                 if own_neighbors >= 3:
                     score -= 15
 

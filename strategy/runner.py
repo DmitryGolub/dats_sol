@@ -105,6 +105,7 @@ def run_match(
         # Уникализируем ключ для случая одинаковых имён ботов в матче
         name_counts[name] = name_counts.get(name, 0) + 1
         key = name if name_counts[name] == 1 else f"{name}#{name_counts[name]}"
+        final_plantations = len(world.get_player_plantations(pid))
         results[key] = {
             "seed": seed,
             "bot": name,
@@ -112,10 +113,27 @@ def run_match(
             "score": ps.score,
             "hq_lost_turn": ps.hq_lost_turn if ps.hq_lost_turn >= 0 else None,
             "max_plantations": max_plants[pid],
+            "final_plantations": final_plantations,
+            "own_cells": own_cells,
             "cells_terraformed": cells,
             "lost_plantations": ps.lost_plantations,
             "beaver_kills": ps.beaver_kills,
             "sabotage_kills": ps.sabotage_kills,
+            "respawns": ps.respawns,
+            "terraform_score": round(ps.terraform_score, 2),
+            "kill_score": round(ps.kill_score, 2),
+            "built_plantations": ps.built_plantations,
+            "upgrades_purchased": ps.upgrades_purchased,
+            "sabotage_damage_dealt": ps.sabotage_damage_dealt,
+            "sabotage_damage_taken": ps.sabotage_damage_taken,
+            "storm_damage_taken": ps.storm_damage_taken,
+            "earthquake_damage_taken": ps.earthquake_damage_taken,
+            "lodge_damage_taken_hp": ps.lodge_damage_taken_hp,
+            "sabotage_lost_plantations": ps.sabotage_lost_plantations,
+            "cataclysm_lost_plantations": ps.cataclysm_lost_plantations,
+            "lodge_lost_plantations": ps.lodge_lost_plantations,
+            "decay_lost_plantations": ps.decay_lost_plantations,
+            "limit_lost_plantations": ps.limit_lost_plantations,
             "turns": turns,
             "elapsed": round(elapsed, 2),
         }
@@ -157,9 +175,23 @@ def main() -> None:
     for name, r in results.items():
         hq = r["hq_lost_turn"] if r["hq_lost_turn"] is not None else "none"
         print(f"bot={name} seed={r['seed']} score={r['score']:.0f} "
-              f"max_plantations={r['max_plantations']} cells={r['cells_terraformed']} "
-              f"hq_lost={hq} sabo={r.get('sabotage_kills', 0)} "
-              f"beavers={r.get('beaver_kills', 0)} lost={r.get('lost_plantations', 0)}")
+              f"tf={r.get('terraform_score', 0):.0f} kill={r.get('kill_score', 0):.0f} "
+              f"max_plant={r['max_plantations']} fin_plant={r.get('final_plantations', 0)} "
+              f"built={r.get('built_plantations', 0)} cells={r['cells_terraformed']} "
+              f"hq_lost={hq} respawns={r.get('respawns', 0)} "
+              f"sabo_k={r.get('sabotage_kills', 0)} beav_k={r.get('beaver_kills', 0)} "
+              f"lost={r.get('lost_plantations', 0)}"
+              f" (sabo={r.get('sabotage_lost_plantations', 0)},"
+              f"cata={r.get('cataclysm_lost_plantations', 0)},"
+              f"lodge={r.get('lodge_lost_plantations', 0)},"
+              f"decay={r.get('decay_lost_plantations', 0)},"
+              f"limit={r.get('limit_lost_plantations', 0)}) "
+              f"dmg_dealt={r.get('sabotage_damage_dealt', 0)} "
+              f"dmg_taken=sabo:{r.get('sabotage_damage_taken', 0)},"
+              f"storm:{r.get('storm_damage_taken', 0)},"
+              f"quake:{r.get('earthquake_damage_taken', 0)},"
+              f"lodge:{r.get('lodge_damage_taken_hp', 0)} "
+              f"upgrades={r.get('upgrades_purchased', 0)}")
 
 
 if __name__ == "__main__":
