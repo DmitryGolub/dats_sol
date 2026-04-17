@@ -1,5 +1,3 @@
-"""Стратегия принятия решений."""
-
-from .base import Strategy
+from .bots.current import CurrentBot as Strategy
 
 __all__ = ["Strategy"]
