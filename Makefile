@@ -1,4 +1,4 @@
-.PHONY: run view up down build logs restart clean
+.PHONY: run view up down build logs restart clean simulate tournament analyze versus snapshot snapshots
 
 run:
 	uv run python main.py
@@ -29,3 +29,21 @@ restart:
 
 clean:
 	docker compose down -v
+
+simulate:
+	uv run python -m strategy.runner $(ARGS)
+
+tournament:
+	uv run python -m strategy.tournament $(ARGS)
+
+analyze:
+	uv run python -m strategy.analyzer $(ARGS)
+
+versus:
+	uv run python -m strategy.tournament --versus $(ARGS)
+
+snapshot:
+	uv run python -m strategy.snapshot create
+
+snapshots:
+	uv run python -m strategy.snapshot list
