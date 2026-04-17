@@ -1,0 +1,7 @@
+commit	mean_score	min_score	max_score	status	description
+c20d98e	57508	30901	86684	keep	baseline
+6fc802a	65485	32371	82731	keep	upgrade order: settle,signal,decay,hp,repair,vision
+4196516	67608	32371	88979	keep	idle plantations second-pass assignment
+498aa84	36737	31236	46145	discard	multi-builder starves frontier
+cccfdad	64005	33075	83754	discard	reinforced distance bias hurt
+b9ed8c5	68883	32135	91173	keep	spread exits to avoid congestion
