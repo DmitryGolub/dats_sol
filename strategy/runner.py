@@ -91,16 +91,31 @@ def run_match(
     elapsed = time.monotonic() - start
 
     results: dict[str, dict] = {}
+    name_counts: dict[str, int] = {}
     for pid, (name, _) in bots.items():
         ps = world.players[pid]
+        own_cells = sum(
+            1 for c in world.terraformed.values()
+            if c.progress > 0 and any(
+                p.owner == pid and p.position == c.position
+                for p in world.plantations.values()
+            )
+        )
         cells = sum(1 for c in world.terraformed.values() if c.progress > 0)
-        results[name] = {
+        # Уникализируем ключ для случая одинаковых имён ботов в матче
+        name_counts[name] = name_counts.get(name, 0) + 1
+        key = name if name_counts[name] == 1 else f"{name}#{name_counts[name]}"
+        results[key] = {
             "seed": seed,
             "bot": name,
+            "player_id": pid,
             "score": ps.score,
             "hq_lost_turn": ps.hq_lost_turn if ps.hq_lost_turn >= 0 else None,
             "max_plantations": max_plants[pid],
             "cells_terraformed": cells,
+            "lost_plantations": ps.lost_plantations,
+            "beaver_kills": ps.beaver_kills,
+            "sabotage_kills": ps.sabotage_kills,
             "turns": turns,
             "elapsed": round(elapsed, 2),
         }
@@ -140,10 +155,11 @@ def main() -> None:
     )
 
     for name, r in results.items():
-        hq = r["hq_lost_turn"] or "none"
+        hq = r["hq_lost_turn"] if r["hq_lost_turn"] is not None else "none"
         print(f"bot={name} seed={r['seed']} score={r['score']:.0f} "
               f"max_plantations={r['max_plantations']} cells={r['cells_terraformed']} "
-              f"hq_lost={hq}")
+              f"hq_lost={hq} sabo={r.get('sabotage_kills', 0)} "
+              f"beavers={r.get('beaver_kills', 0)} lost={r.get('lost_plantations', 0)}")
 
 
 if __name__ == "__main__":
