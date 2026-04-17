@@ -246,8 +246,22 @@ class CurrentBot(BaseStrategy):
                 score = 0.0
                 if _is_reinforced(nb):
                     score += 80
-                elif any(_is_reinforced(n2) for n2 in _adjacent(nb) if 0 <= n2[0] < w and 0 <= n2[1] < h):
-                    score += 30
+                else:
+                    rx = nb[0] - nb[0] % 7
+                    ry = nb[1] - nb[1] % 7
+                    best_r_dist = 999
+                    for rfx in (rx, rx + 7):
+                        for rfy in (ry, ry + 7):
+                            if 0 <= rfx < w and 0 <= rfy < h and (rfx, rfy) not in self._mountains:
+                                d = max(abs(nb[0] - rfx), abs(nb[1] - rfy))
+                                if d < best_r_dist:
+                                    best_r_dist = d
+                    if best_r_dist == 1:
+                        score += 35
+                    elif best_r_dist == 2:
+                        score += 18
+                    elif best_r_dist == 3:
+                        score += 8
 
                 dist_to_center = abs(nb[0] - center[0]) + abs(nb[1] - center[1])
                 score += 20 * (1 - dist_to_center / max_dist)
