@@ -170,6 +170,7 @@ def _phase_upgrades(world: WorldState, commands: dict[str, Command]) -> None:
             continue
         ps.upgrade_levels[name] = ps.upgrade_levels.get(name, 0) + 1
         ps.upgrade_points -= 1
+        ps.upgrades_purchased += 1
 
 
 # ---------- phase 2: repair + build ----------
@@ -245,6 +246,7 @@ def _phase_repair_build(world: WorldState, classified: dict[str, dict[str, list]
             created_turn=world.turn_no,
         )
         world.plantations[plant_id] = new_plant
+        ps.built_plantations += 1
         # очистить ВСЕ постройки на этой клетке (включая собственную)
         to_del = [key for key in world.constructions.keys() if key[0] == cell]
         for key in to_del:
@@ -275,6 +277,10 @@ def _phase_sabotage(world: WorldState, classified: dict[str, dict[str, list]]) -
                 continue
             target.hp -= effective
             target.damage_by[pid] = target.damage_by.get(pid, 0) + effective
+            ps.sabotage_damage_dealt += effective
+            victim_ps = world.players.get(target.owner)
+            if victim_ps is not None:
+                victim_ps.sabotage_damage_taken += effective
 
     # Проверяем убийства и начисляем очки по last-hit
     dead: list[SimPlantation] = []
@@ -291,11 +297,13 @@ def _phase_sabotage(world: WorldState, classified: dict[str, dict[str, list]]) -
             ws = world.players.get(winner)
             if ws is not None:
                 ws.score += share
+                ws.kill_score += share
                 ws.sabotage_kills += 1
         # Учитываем потерю
         victim_ps = world.players.get(p.owner)
         if victim_ps is not None:
             victim_ps.lost_plantations += 1
+            victim_ps.sabotage_lost_plantations += 1
         if p.is_main:
             _destroy_player(world, p.owner, skip_respawn=True)
         else:
@@ -340,6 +348,7 @@ def _phase_player_attack_lodges(world: WorldState, classified: dict[str, dict[st
                 ws = world.players.get(winner)
                 if ws is not None:
                     ws.score += share
+                    ws.kill_score += share
                     ws.beaver_kills += 1
         del world.beaver_lodges[lid]
 
@@ -387,6 +396,8 @@ def _phase_lodge_damage(world: WorldState) -> None:
             if abs(px - lx) <= LODGE_RADIUS and abs(py - ly) <= LODGE_RADIUS:
                 ps = world.players.get(p.owner)
                 dmg = ps.lodge_damage_taken if ps else 0
+                if dmg > 0 and ps is not None:
+                    ps.lodge_damage_taken_hp += dmg
                 p.hp -= dmg
                 if p.hp <= 0:
                     dead.append(p)
@@ -407,6 +418,7 @@ def _phase_lodge_damage(world: WorldState) -> None:
         victim_ps = world.players.get(p.owner)
         if victim_ps is not None:
             victim_ps.lost_plantations += 1
+            victim_ps.lodge_lost_plantations += 1
         if p.is_main:
             _destroy_player(world, p.owner, skip_respawn=True)
         else:
@@ -427,6 +439,10 @@ def _phase_degradation_isolated(world: WorldState) -> None:
         if p.hp <= 0:
             dead.append(p)
     for p in dead:
+        victim_ps = world.players.get(p.owner)
+        if victim_ps is not None:
+            victim_ps.lost_plantations += 1
+            victim_ps.decay_lost_plantations += 1
         if p.is_main:
             _destroy_player(world, p.owner, skip_respawn=True)
         elif p.id in world.plantations:
@@ -476,7 +492,9 @@ def _phase_terraformation(world: WorldState) -> None:
         # Изолированные терраформируют, но без очков
         if not p.is_isolated and gained > 0:
             mult = REINFORCED_MULTIPLIER if is_reinforced(p.position) else 1.0
-            ps.score += gained * POINTS_PER_PERCENT * mult
+            earned = gained * POINTS_PER_PERCENT * mult
+            ps.score += earned
+            ps.terraform_score += earned
 
         if cell.progress >= 100:
             cell.turns_since_complete = 0
@@ -557,6 +575,8 @@ def _phase_cataclysms(world: WorldState) -> None:
                         continue
                     ps = world.players.get(p.owner)
                     dmg = ps.earthquake_damage if ps else 0
+                    if dmg > 0 and ps is not None:
+                        ps.earthquake_damage_taken += dmg
                     p.hp -= dmg
                     if p.hp <= 0:
                         dead_plants.append(p)
@@ -590,6 +610,11 @@ def _phase_cataclysms(world: WorldState) -> None:
                     new_hp = p.hp - SANDSTORM_DAMAGE
                     if new_hp < 1:
                         new_hp = 1
+                    actual = p.hp - new_hp
+                    if actual > 0:
+                        ps = world.players.get(p.owner)
+                        if ps is not None:
+                            ps.storm_damage_taken += actual
                     p.hp = new_hp
             # Движение
             nx = cx + ev.velocity[0] * ev.speed
@@ -607,6 +632,7 @@ def _phase_cataclysms(world: WorldState) -> None:
         victim_ps = world.players.get(p.owner)
         if victim_ps is not None:
             victim_ps.lost_plantations += 1
+            victim_ps.cataclysm_lost_plantations += 1
         if p.is_main:
             _destroy_player(world, p.owner, skip_respawn=True)
         else:
@@ -637,6 +663,8 @@ def _phase_enforce_limits(world: WorldState) -> None:
                 break
             if oldest.id in world.plantations:
                 del world.plantations[oldest.id]
+                ps.lost_plantations += 1
+                ps.limit_lost_plantations += 1
 
 
 def _phase_lodge_regen(world: WorldState) -> None:
@@ -707,4 +735,5 @@ def _respawn_player(world: WorldState, player_id: str) -> None:
             created_turn=world.turn_no,
         )
         ps.hq_lost_turn = -1
+        ps.respawns += 1
         return
