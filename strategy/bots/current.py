@@ -196,6 +196,31 @@ class CurrentBot(BaseStrategy):
                 else:
                     cmd.build_via(best_builder, best_exit, target_pos)
 
+        for p in state.plantations:
+            if p.position in assigned or p.is_isolated:
+                continue
+            chosen_target: Position | None = None
+            chosen_exit: Position | None = None
+            for target_pos, score in frontier:
+                if target_assignments[target_pos] >= 3:
+                    continue
+                if _chebyshev(p.position, target_pos) <= state.action_range:
+                    chosen_target = target_pos
+                    chosen_exit = p.position
+                    break
+                exit_point = self._find_exit_point(p.position, target_pos, own_positions, state)
+                if exit_point is not None:
+                    chosen_target = target_pos
+                    chosen_exit = exit_point
+                    break
+            if chosen_target is not None and chosen_exit is not None:
+                assigned.add(p.position)
+                target_assignments[chosen_target] += 1
+                if chosen_exit == p.position:
+                    cmd.build(p.position, chosen_target)
+                else:
+                    cmd.build_via(p.position, chosen_exit, chosen_target)
+
     def _score_frontier(
         self,
         state: GameState,
