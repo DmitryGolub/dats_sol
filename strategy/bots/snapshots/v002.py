@@ -32,8 +32,8 @@ def _is_reinforced(pos: Position) -> bool:
     return pos[0] % 7 == 0 and pos[1] % 7 == 0
 
 
-class CurrentBot(BaseStrategy):
-    name = "current"
+class BotV002(BaseStrategy):
+    name = "v002"
 
     def __init__(self) -> None:
         self._mountains: set[Position] = set()
