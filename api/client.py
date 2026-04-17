@@ -78,24 +78,33 @@ class GameAPI:
     # --- private helpers ---
 
     def _save_response(self, data: dict) -> None:
-        """Сохранить сырой JSON-ответ сервера в data_dir."""
+        """Сохранить сырой JSON-ответ сервера в data_dir.
+
+        Для ответов арены (содержат turnNo) дополнительно обновляется arena.json,
+        чтобы визуализатор мог подхватить актуальное состояние.
+        """
         if self.data_dir is None:
             return
 
         turn_no = data.get("turnNo")
         if turn_no is not None:
-            # Основной снапшот арены — именуем по ходу
-            path = self.data_dir / f"turn_{int(turn_no):04d}.json"
+            text = json.dumps(data, ensure_ascii=False, indent=2)
+            # arena.json — для визуализатора (атомарная запись через tmp)
+            arena_path = self.data_dir / "arena.json"
+            tmp_path = self.data_dir / "arena.json.tmp"
+            try:
+                tmp_path.write_text(text, encoding="utf-8")
+                tmp_path.replace(arena_path)
+            except OSError:
+                pass
         else:
-            # Прочие ответы (логи, команды, ошибки) — по времени
+            # Прочие ответы — по времени
             ts = time.strftime("%Y%m%d_%H%M%S")
             path = self.data_dir / f"resp_{ts}.json"
-
-        try:
-            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        except OSError as exc:
-            # Не ломаем игру, если не удалось записать файл
-            pass
+            try:
+                path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            except OSError:
+                pass
 
     def _request(
         self,
@@ -125,12 +134,15 @@ class GameAPI:
         # Сохраняем успешные (и даже ошибочные) ответы для анализа / визуализации
         self._save_response(data)
 
-        if resp.status_code == 200:
+        errors = self._extract_errors(data)
+
+        if resp.status_code == 200 and not errors:
             return data
 
-        # Определяем тип ошибки по статус-коду
-        errors = self._extract_errors(data)
-        msg = errors[0] if errors else f"HTTP {resp.status_code}"
+        if errors:
+            msg = errors[0]
+        else:
+            msg = f"HTTP {resp.status_code}"
 
         if resp.status_code in (401, 403):
             raise AuthenticationError(msg, status_code=resp.status_code, raw_response=data)

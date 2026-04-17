@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>DatsSol — Визуализация</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #eee; font-family: 'Consolas', 'Monaco', monospace; display: flex; height: 100vh; overflow: hidden; }
+
+#canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+canvas:active { cursor: grabbing; }
+
+/* --- Панель управления зумом --- */
+#zoom-controls {
+  position: absolute; bottom: 12px; right: 12px; z-index: 60;
+  display: flex; flex-direction: column; gap: 4px; align-items: center;
+}
+#zoom-controls button {
+  width: 36px; height: 36px; border: 1px solid #0f3460; border-radius: 6px;
+  background: rgba(22, 33, 62, 0.9); color: #eee; font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+}
+#zoom-controls button:hover { background: #0f3460; }
+#zoom-controls button:active { background: #1a3a5c; }
+#zoom-level {
+  font-size: 11px; color: #aaa; background: rgba(22, 33, 62, 0.9);
+  padding: 2px 6px; border-radius: 4px; border: 1px solid #0f3460; min-width: 42px; text-align: center;
+}
+
+/* --- Боковая панель --- */
+#panel {
+  width: 330px; background: #16213e; padding: 12px; overflow-y: auto;
+  border-left: 2px solid #0f3460; font-size: 13px; line-height: 1.5;
+}
+#panel h2 { color: #e94560; font-size: 15px; margin: 12px 0 6px 0; border-bottom: 1px solid #0f3460; padding-bottom: 4px; }
+#panel h2:first-child { margin-top: 0; }
+
+.stat-row { display: flex; justify-content: space-between; padding: 2px 0; }
+.stat-label { color: #aaa; }
+.stat-val { color: #53d769; font-weight: bold; }
+
+.hp-bar-wrap { background: #333; border-radius: 3px; height: 8px; margin: 2px 0; overflow: hidden; }
+.hp-bar { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+.plant-item { padding: 4px 6px; margin: 2px 0; border-radius: 4px; cursor: pointer; }
+.plant-item:hover { background: #1a3a5c; }
+.plant-item.selected { background: #0f3460; }
+.plant-item.isolated { opacity: 0.5; }
+.plant-main { border-left: 3px solid #ffd700; padding-left: 6px; }
+
+.upgrade-item { display: flex; justify-content: space-between; align-items: center; padding: 2px 0; }
+.upgrade-bar-wrap { width: 80px; background: #333; border-radius: 3px; height: 6px; overflow: hidden; }
+.upgrade-bar { height: 100%; background: #4fc3f7; border-radius: 3px; }
+
+.meteo-item { padding: 4px 6px; margin: 2px 0; border-radius: 4px; }
+.meteo-earthquake { background: rgba(183, 28, 28, 0.3); border-left: 3px solid #e53935; }
+.meteo-sandstorm { background: rgba(255, 152, 0, 0.3); border-left: 3px solid #ff9800; }
+
+#tooltip {
+  position: absolute; background: rgba(22, 33, 62, 0.95); border: 1px solid #0f3460;
+  padding: 8px 10px; border-radius: 6px; font-size: 12px; pointer-events: none;
+  display: none; z-index: 100; max-width: 260px; white-space: pre-line;
+}
+
+#status-bar {
+  position: absolute; top: 8px; left: 8px; background: rgba(22, 33, 62, 0.9);
+  padding: 6px 12px; border-radius: 6px; font-size: 12px; z-index: 50;
+  display: flex; align-items: center; gap: 10px;
+}
+.status-connected { color: #53d769; }
+.status-disconnected { color: #e94560; }
+#coords-display { color: #aaa; }
+
+#legend {
+  position: absolute; bottom: 12px; left: 8px; background: rgba(22, 33, 62, 0.9);
+  padding: 8px 12px; border-radius: 6px; font-size: 11px; z-index: 50;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.legend-color { width: 14px; height: 14px; border-radius: 3px; border: 1px solid #555; flex-shrink: 0; }
+
+/* --- Быстрые кнопки навигации --- */
+#nav-buttons {
+  position: absolute; top: 8px; right: 12px; z-index: 60;
+  display: flex; gap: 4px;
+}
+#nav-buttons button {
+  padding: 4px 10px; border: 1px solid #0f3460; border-radius: 6px;
+  background: rgba(22, 33, 62, 0.9); color: #ccc; font-size: 11px; cursor: pointer;
+  font-family: inherit; transition: background 0.15s;
+}
+#nav-buttons button:hover { background: #0f3460; color: #fff; }
+</style>
+</head>
+<body>
+
+<div id="canvas-wrap">
+  <canvas id="map"></canvas>
+  <div id="tooltip"></div>
+
+  <div id="status-bar">
+    <span id="ws-status" class="status-disconnected">Нет связи</span>
+    <span id="coords-display"></span>
+  </div>
+
+  <div id="nav-buttons">
+    <button onclick="centerOnHQ()" title="Центрировать на ЦУ">ЦУ</button>
+    <button onclick="fitMap()" title="Показать всю карту">Вся карта</button>
+    <button onclick="fitPlantations()" title="Показать все плантации">Плантации</button>
+  </div>
+
+  <div id="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#53d769"></div> Плантация</div>
+    <div class="legend-item"><div class="legend-color" style="background:#ffd700"></div> ЦУ (центр управления)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#e94560"></div> Враг</div>
+    <div class="legend-item"><div class="legend-color" style="background:#8d6e63"></div> Логово бобров</div>
+    <div class="legend-item"><div class="legend-color" style="background:#5d4e37"></div> Гора</div>
+    <div class="legend-item"><div class="legend-color" style="background:#42a5f5"></div> Стройка</div>
+    <div class="legend-item"><div class="legend-color" style="background:rgba(255,152,0,0.5)"></div> Песчаная буря</div>
+    <div class="legend-item"><div class="legend-color" style="background:rgba(255,215,0,0.3);border-color:#ffd700"></div> Усиленная клетка (x7)</div>
+  </div>
+
+  <div id="zoom-controls">
+    <button onclick="zoomIn()" title="Приблизить (+)">+</button>
+    <div id="zoom-level">×1.0</div>
+    <button onclick="zoomOut()" title="Отдалить (-)">−</button>
+    <button onclick="zoomReset()" title="Сброс масштаба" style="font-size:12px;margin-top:2px">1:1</button>
+  </div>
+</div>
+
+<div id="panel">
+  <h2>Информация о ходе</h2>
+  <div id="turn-info">
+    <div class="stat-row"><span class="stat-label">Ход</span><span class="stat-val" id="p-turn">—</span></div>
+    <div class="stat-row"><span class="stat-label">Следующий через</span><span class="stat-val" id="p-next">—</span></div>
+    <div class="stat-row"><span class="stat-label">Размер карты</span><span class="stat-val" id="p-size">—</span></div>
+    <div class="stat-row"><span class="stat-label">Радиус действия (AR)</span><span class="stat-val" id="p-ar">—</span></div>
+  </div>
+
+  <h2>Статистика</h2>
+  <div id="stats-info">
+    <div class="stat-row"><span class="stat-label">Плантации</span><span class="stat-val" id="p-plants">—</span></div>
+    <div class="stat-row"><span class="stat-label">Изолированные</span><span class="stat-val" id="p-isolated">—</span></div>
+    <div class="stat-row"><span class="stat-label">Стройки</span><span class="stat-val" id="p-constr">—</span></div>
+    <div class="stat-row"><span class="stat-label">Враги (видимые)</span><span class="stat-val" id="p-enemies">—</span></div>
+    <div class="stat-row"><span class="stat-label">Бобры (видимые)</span><span class="stat-val" id="p-beavers">—</span></div>
+    <div class="stat-row"><span class="stat-label">Клетки терраформ.</span><span class="stat-val" id="p-cells">—</span></div>
+  </div>
+
+  <h2>Апгрейды <span id="p-upgrade-pts" style="color:#4fc3f7"></span></h2>
+  <div id="upgrades-list"></div>
+
+  <h2>Прогноз катаклизмов</h2>
+  <div id="meteo-list"><span style="color:#666">Нет данных</span></div>
+
+  <h2>Плантации</h2>
+  <div id="plant-list"></div>
+
+  <h2>Выбранный объект</h2>
+  <div id="selection-detail" style="color:#666">Кликните на карту для выбора</div>
+</div>
+
+<script>
+const canvas = document.getElementById('map');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+const wrap = document.getElementById('canvas-wrap');
+
+// --- Состояние ---
+let state = null;
+let mountainSet = new Set();
+let cellMap = new Map();
+let constructionMap = new Map();
+let plantMap = new Map();
+let enemyMap = new Map();
+let beaverMap = new Map();
+
+// --- Камера ---
+const BASE_CELL = 24;
+let zoom = 1.0;
+let viewX = 0, viewY = 0;
+let isDragging = false;
+let dragStartX = 0, dragStartY = 0;
+let dragViewX = 0, dragViewY = 0;
+let selectedPos = null;
+let mouseWorldX = -1, mouseWorldY = -1;
+
+// --- Утилиты ---
+function k(x, y) { return x + ',' + y; }
+function cellSize() { return BASE_CELL * zoom; }
+
+function screenToWorld(sx, sy) {
+  const cs = cellSize();
+  return [Math.floor(viewX + sx / cs), Math.floor(viewY + sy / cs)];
+}
+function worldToScreen(wx, wy) {
+  const cs = cellSize();
+  return [(wx - viewX) * cs, (wy - viewY) * cs];
+}
+
+function terraColor(progress) {
+  const t = progress / 100;
+  const r = Math.round(60 * (1 - t) + 34 * t);
+  const g = Math.round(50 * (1 - t) + 139 * t);
+  const b = Math.round(40 * (1 - t) + 34 * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+function hpColor(hp, maxHp) {
+  const t = hp / maxHp;
+  if (t > 0.6) return '#53d769';
+  if (t > 0.3) return '#f5a623';
+  return '#e94560';
+}
+
+function isReinforced(x, y) { return x % 7 === 0 && y % 7 === 0; }
+
+function updateZoomLabel() {
+  document.getElementById('zoom-level').textContent = '×' + zoom.toFixed(1);
+}
+
+// --- Зум: кнопки ---
+function applyZoomAt(newZoom, screenX, screenY) {
+  const oldZoom = zoom;
+  zoom = Math.max(0.05, Math.min(8.0, newZoom));
+  if (screenX != null) {
+    viewX += screenX / (BASE_CELL * oldZoom) - screenX / (BASE_CELL * zoom);
+    viewY += screenY / (BASE_CELL * oldZoom) - screenY / (BASE_CELL * zoom);
+  }
+  updateZoomLabel();
+  render();
+}
+
+function zoomIn() {
+  const w = wrap.clientWidth / 2, h = wrap.clientHeight / 2;
+  applyZoomAt(zoom * 1.3, w, h);
+}
+function zoomOut() {
+  const w = wrap.clientWidth / 2, h = wrap.clientHeight / 2;
+  applyZoomAt(zoom / 1.3, w, h);
+}
+function zoomReset() {
+  const w = wrap.clientWidth / 2, h = wrap.clientHeight / 2;
+  applyZoomAt(1.0, w, h);
+}
+
+// --- Навигация ---
+function centerOnHQ() {
+  if (!state || !state.plantations) return;
+  const hq = state.plantations.find(p => p.isMain);
+  if (!hq) return;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  const cs = cellSize();
+  viewX = hq.position[0] + 0.5 - w / cs / 2;
+  viewY = hq.position[1] + 0.5 - h / cs / 2;
+  render();
+}
+
+function fitMap() {
+  if (!state || !state.size) return;
+  const [mapW, mapH] = state.size;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  zoom = Math.min(w / (mapW * BASE_CELL), h / (mapH * BASE_CELL));
+  zoom = Math.max(0.05, zoom);
+  const cs = cellSize();
+  viewX = (mapW - w / cs) / 2;
+  viewY = (mapH - h / cs) / 2;
+  updateZoomLabel();
+  render();
+}
+
+function fitPlantations() {
+  if (!state || !state.plantations || state.plantations.length === 0) return;
+  let minPx = Infinity, minPy = Infinity, maxPx = -Infinity, maxPy = -Infinity;
+  for (const p of state.plantations) {
+    minPx = Math.min(minPx, p.position[0]);
+    minPy = Math.min(minPy, p.position[1]);
+    maxPx = Math.max(maxPx, p.position[0]);
+    maxPy = Math.max(maxPy, p.position[1]);
+  }
+  const pad = 5;
+  minPx -= pad; minPy -= pad; maxPx += pad + 1; maxPy += pad + 1;
+  const rangeX = maxPx - minPx, rangeY = maxPy - minPy;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  zoom = Math.min(w / (rangeX * BASE_CELL), h / (rangeY * BASE_CELL));
+  zoom = Math.max(0.05, Math.min(8.0, zoom));
+  const cs = cellSize();
+  viewX = minPx + (rangeX - w / cs) / 2;
+  viewY = minPy + (rangeY - h / cs) / 2;
+  updateZoomLabel();
+  render();
+}
+
+// --- Построение индексов ---
+function buildMaps(d) {
+  mountainSet = new Set();
+  if (d.mountains) d.mountains.forEach(m => mountainSet.add(k(m[0], m[1])));
+  cellMap = new Map();
+  if (d.cells) d.cells.forEach(c => cellMap.set(k(c.position[0], c.position[1]), c));
+  constructionMap = new Map();
+  if (d.construction) d.construction.forEach(c => constructionMap.set(k(c.position[0], c.position[1]), c));
+  plantMap = new Map();
+  if (d.plantations) d.plantations.forEach(p => plantMap.set(k(p.position[0], p.position[1]), p));
+  enemyMap = new Map();
+  if (d.enemy) d.enemy.forEach(e => enemyMap.set(k(e.position[0], e.position[1]), e));
+  beaverMap = new Map();
+  if (d.beavers) d.beavers.forEach(b => beaverMap.set(k(b.position[0], b.position[1]), b));
+}
+
+// --- Рендер ---
+function render() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, w, h);
+
+  if (!state) {
+    ctx.fillStyle = '#666';
+    ctx.font = '20px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Ожидание данных арены...', w / 2, h / 2);
+    return;
+  }
+
+  const cs = cellSize();
+  const mapW = state.size ? state.size[0] : 0;
+  const mapH = state.size ? state.size[1] : 0;
+
+  // Видимый диапазон клеток
+  const minX = Math.max(0, Math.floor(viewX));
+  const minY = Math.max(0, Math.floor(viewY));
+  const maxX = Math.min(mapW, Math.ceil(viewX + w / cs));
+  const maxY = Math.min(mapH, Math.ceil(viewY + h / cs));
+
+  // Фон: пустыня + горы + терраформация
+  for (let gx = minX; gx < maxX; gx++) {
+    for (let gy = minY; gy < maxY; gy++) {
+      const [sx, sy] = worldToScreen(gx, gy);
+      const key = k(gx, gy);
+
+      if (mountainSet.has(key)) {
+        ctx.fillStyle = '#5d4e37';
+        ctx.fillRect(sx, sy, cs + 0.5, cs + 0.5);
+        if (cs > 12) {
+          ctx.fillStyle = '#777';
+          ctx.font = `${Math.min(cs * 0.5, 14)}px monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('\u25b2', sx + cs / 2, sy + cs / 2);
+        }
+        continue;
+      }
+
+      const cell = cellMap.get(key);
+      if (cell && cell.terraformationProgress > 0) {
+        ctx.fillStyle = terraColor(cell.terraformationProgress);
+      } else {
+        ctx.fillStyle = '#2a2520';
+      }
+      ctx.fillRect(sx, sy, cs + 0.5, cs + 0.5);
+
+      // Усиленная клетка
+      if (isReinforced(gx, gy)) {
+        ctx.strokeStyle = 'rgba(255, 215, 0, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(sx + 1, sy + 1, cs - 2, cs - 2);
+      }
+    }
+  }
+
+  // Сетка
+  if (cs > 8) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 0.5;
+    for (let gx = minX; gx <= maxX; gx++) {
+      const sx = (gx - viewX) * cs;
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+    }
+    for (let gy = minY; gy <= maxY; gy++) {
+      const sy = (gy - viewY) * cs;
+      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke();
+    }
+  }
+
+  // Связи между смежными плантациями (ортогональные)
+  if (state.plantations && state.plantations.length > 1) {
+    ctx.strokeStyle = 'rgba(83, 215, 105, 0.3)';
+    ctx.lineWidth = 2;
+    const dirs = [[1, 0], [0, 1]];
+    for (const p of state.plantations) {
+      const [px, py] = p.position;
+      for (const [dx, dy] of dirs) {
+        if (plantMap.has(k(px + dx, py + dy))) {
+          const [sx1, sy1] = worldToScreen(px, py);
+          const [sx2, sy2] = worldToScreen(px + dx, py + dy);
+          ctx.beginPath();
+          ctx.moveTo(sx1 + cs / 2, sy1 + cs / 2);
+          ctx.lineTo(sx2 + cs / 2, sy2 + cs / 2);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  // Стройки
+  for (const [key, con] of constructionMap) {
+    const [cx, cy] = key.split(',').map(Number);
+    if (cx < minX || cx >= maxX || cy < minY || cy >= maxY) continue;
+    const [sx, sy] = worldToScreen(cx, cy);
+    ctx.fillStyle = 'rgba(66, 165, 245, 0.4)';
+    ctx.fillRect(sx + 1, sy + 1, cs - 2, cs - 2);
+    ctx.strokeStyle = '#42a5f5';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(sx + 1, sy + 1, cs - 2, cs - 2);
+    const barH = Math.max(2, cs * 0.12);
+    const barW = (cs - 4) * (con.progress / 50);
+    ctx.fillStyle = '#42a5f5';
+    ctx.fillRect(sx + 2, sy + cs - barH - 2, barW, barH);
+  }
+
+  // Свои плантации
+  const maxHpVal = 50 + ((state.plantationUpgrades?.tiers?.find(t => t.name === 'max_hp')?.current || 0) * 10);
+  for (const p of (state.plantations || [])) {
+    const [px, py] = p.position;
+    if (px < minX || px >= maxX || py < minY || py >= maxY) continue;
+    const [sx, sy] = worldToScreen(px, py);
+    const cx = sx + cs / 2, cy2 = sy + cs / 2;
+    const r = cs * 0.38;
+
+    ctx.globalAlpha = p.isIsolated ? 0.4 : 1.0;
+
+    if (p.isMain) {
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI / 5);
+        const ox = cx + r * Math.cos(angle);
+        const oy = cy2 + r * Math.sin(angle);
+        if (i === 0) ctx.moveTo(ox, oy); else ctx.lineTo(ox, oy);
+        const ia = angle + Math.PI / 5;
+        ctx.lineTo(cx + r * 0.45 * Math.cos(ia), cy2 + r * 0.45 * Math.sin(ia));
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillStyle = '#53d769';
+      ctx.beginPath();
+      ctx.arc(cx, cy2, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // HP-бар
+    if (cs > 10) {
+      const barW = cs - 4, barH = Math.max(2, cs * 0.1);
+      const filled = barW * (p.hp / maxHpVal);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(sx + 2, sy + 1, barW, barH);
+      ctx.fillStyle = hpColor(p.hp, maxHpVal);
+      ctx.fillRect(sx + 2, sy + 1, filled, barH);
+    }
+    ctx.globalAlpha = 1.0;
+  }
+
+  // Враги
+  for (const e of (state.enemy || [])) {
+    const [ex, ey] = e.position;
+    if (ex < minX || ex >= maxX || ey < minY || ey >= maxY) continue;
+    const [sx, sy] = worldToScreen(ex, ey);
+    ctx.fillStyle = '#e94560';
+    ctx.beginPath();
+    ctx.arc(sx + cs / 2, sy + cs / 2, cs * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    if (cs > 10) {
+      const barW = cs - 4, barH = Math.max(2, cs * 0.1);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(sx + 2, sy + cs - barH - 1, barW, barH);
+      ctx.fillStyle = '#e94560';
+      ctx.fillRect(sx + 2, sy + cs - barH - 1, barW * (e.hp / 100), barH);
+    }
+  }
+
+  // Бобры
+  for (const b of (state.beavers || [])) {
+    const [bx, by] = b.position;
+    if (bx < minX || bx >= maxX || by < minY || by >= maxY) continue;
+    const [sx, sy] = worldToScreen(bx, by);
+    const cx = sx + cs / 2, cy2 = sy + cs / 2;
+    ctx.fillStyle = '#8d6e63';
+    ctx.beginPath();
+    ctx.arc(cx, cy2, cs * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    if (cs > 14) {
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.min(cs * 0.4, 12)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('B', cx, cy2);
+    }
+    if (cs > 10) {
+      const barW = cs - 4, barH = Math.max(2, cs * 0.1);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(sx + 2, sy + cs - barH - 1, barW, barH);
+      ctx.fillStyle = '#ff8a65';
+      ctx.fillRect(sx + 2, sy + cs - barH - 1, barW * (b.hp / 100), barH);
+    }
+  }
+
+  // Песчаные бури (диск: dx^2+dy^2 <= r^2)
+  for (const m of (state.meteoForecasts || [])) {
+    if (m.kind !== 'sandstorm' || !m.position) continue;
+    const [mx, my] = m.position;
+    const [sx, sy] = worldToScreen(mx, my);
+    const r = (m.radius || 3) * cs;
+    const cx = sx + cs / 2, cy2 = sy + cs / 2;
+
+    if (m.forming) {
+      // Формирующаяся буря — пунктир
+      ctx.strokeStyle = 'rgba(255, 152, 0, 0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(cx, cy2, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (cs > 8) {
+        ctx.fillStyle = 'rgba(255, 152, 0, 0.6)';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('формируется', cx, cy2 - r - 4);
+      }
+    } else {
+      // Активная буря
+      const grad = ctx.createRadialGradient(cx, cy2, 0, cx, cy2, r);
+      grad.addColorStop(0, 'rgba(255, 152, 0, 0.35)');
+      grad.addColorStop(0.7, 'rgba(255, 152, 0, 0.15)');
+      grad.addColorStop(1, 'rgba(255, 152, 0, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy2, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 152, 0, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    // Стрелка направления
+    if (m.nextPosition) {
+      const [nsx, nsy] = worldToScreen(m.nextPosition[0], m.nextPosition[1]);
+      const tx = nsx + cs / 2, ty = nsy + cs / 2;
+      ctx.strokeStyle = 'rgba(255, 152, 0, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy2);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Стрелка
+      const angle = Math.atan2(ty - cy2, tx - cx);
+      const aLen = 8;
+      ctx.fillStyle = 'rgba(255, 152, 0, 0.8)';
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(tx - aLen * Math.cos(angle - 0.4), ty - aLen * Math.sin(angle - 0.4));
+      ctx.lineTo(tx - aLen * Math.cos(angle + 0.4), ty - aLen * Math.sin(angle + 0.4));
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // Подсветка выделенной клетки
+  if (selectedPos) {
+    const [sx, sy] = worldToScreen(selectedPos[0], selectedPos[1]);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx, sy, cs, cs);
+  }
+
+  // Подсветка клетки под курсором
+  if (mouseWorldX >= 0 && mouseWorldY >= 0 && !isDragging) {
+    const [sx, sy] = worldToScreen(mouseWorldX, mouseWorldY);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx, sy, cs, cs);
+  }
+
+  // Координаты при зуме
+  if (cs > 40) {
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    for (let gx = minX; gx < maxX; gx++) {
+      for (let gy = minY; gy < maxY; gy++) {
+        const [sx, sy] = worldToScreen(gx, gy);
+        ctx.fillText(`${gx},${gy}`, sx + 2, sy + 2);
+      }
+    }
+  }
+}
+
+// --- Обновление панели ---
+function updatePanel() {
+  if (!state) return;
+  const d = state;
+
+  document.getElementById('p-turn').textContent = d.turnNo ?? '—';
+  document.getElementById('p-next').textContent = d.nextTurnIn != null ? d.nextTurnIn.toFixed(1) + ' сек' : '—';
+  document.getElementById('p-size').textContent = d.size ? d.size[0] + '\u00d7' + d.size[1] : '—';
+  document.getElementById('p-ar').textContent = d.actionRange ?? '—';
+
+  const plants = d.plantations || [];
+  document.getElementById('p-plants').textContent = plants.length;
+  document.getElementById('p-isolated').textContent = plants.filter(p => p.isIsolated).length;
+  document.getElementById('p-constr').textContent = (d.construction || []).length;
+  document.getElementById('p-enemies').textContent = (d.enemy || []).length;
+  document.getElementById('p-beavers').textContent = (d.beavers || []).length;
+  document.getElementById('p-cells').textContent = (d.cells || []).length;
+
+  // Апгрейды
+  const upg = d.plantationUpgrades;
+  if (upg) {
+    document.getElementById('p-upgrade-pts').textContent =
+      `(${upg.points}/${upg.maxPoints} очк., след. через ${upg.turnsUntilPoints} ход.)`;
+
+    const ul = document.getElementById('upgrades-list');
+    ul.innerHTML = '';
+    const names = {
+      repair_power: 'Ремонт (RS) +1',
+      max_hp: 'Макс. HP +10',
+      settlement_limit: 'Лимит плантаций +1',
+      signal_range: 'Дальность сигнала (SR) +1',
+      vision_range: 'Обзор (VR) +2',
+      decay_mitigation: 'Деградация (DS) -2',
+      earthquake_mitigation: 'Урон землетрясения -2',
+      beaver_damage_mitigation: 'Урон бобров -2',
+    };
+    for (const tier of (upg.tiers || [])) {
+      const div = document.createElement('div');
+      div.className = 'upgrade-item';
+      const pct = tier.max > 0 ? (tier.current / tier.max * 100) : 0;
+      div.innerHTML = `
+        <span style="flex:1">${names[tier.name] || tier.name}</span>
+        <span style="width:40px;text-align:right;color:#4fc3f7">${tier.current}/${tier.max}</span>
+        <div class="upgrade-bar-wrap" style="margin-left:6px">
+          <div class="upgrade-bar" style="width:${pct}%"></div>
+        </div>`;
+      ul.appendChild(div);
+    }
+  }
+
+  // Прогноз катаклизмов
+  const meteo = d.meteoForecasts || [];
+  const ml = document.getElementById('meteo-list');
+  if (meteo.length === 0) {
+    ml.innerHTML = '<span style="color:#666">Нет данных</span>';
+  } else {
+    ml.innerHTML = '';
+    for (const m of meteo) {
+      const div = document.createElement('div');
+      div.className = `meteo-item meteo-${m.kind}`;
+      const kindRu = m.kind === 'earthquake' ? 'Землетрясение' : m.kind === 'sandstorm' ? 'Песчаная буря' : m.kind;
+      let text = `<b>${kindRu}</b>`;
+      if (m.turnsUntil != null) text += ` через ${m.turnsUntil} ход.`;
+      if (m.forming) text += ' (формируется)';
+      if (m.position) text += `<br>центр: [${m.position[0]}, ${m.position[1]}]`;
+      if (m.radius != null) text += ` r=${m.radius}`;
+      if (m.nextPosition) text += `<br>след. позиция: [${m.nextPosition[0]}, ${m.nextPosition[1]}]`;
+      div.innerHTML = text;
+      div.style.cursor = 'pointer';
+      div.onclick = () => {
+        if (m.position) {
+          const cs = cellSize();
+          viewX = m.position[0] - wrap.clientWidth / cs / 2;
+          viewY = m.position[1] - wrap.clientHeight / cs / 2;
+          render();
+        }
+      };
+      ml.appendChild(div);
+    }
+  }
+
+  // Список плантаций
+  const pl = document.getElementById('plant-list');
+  pl.innerHTML = '';
+  const maxHp = 50 + ((upg?.tiers?.find(t => t.name === 'max_hp')?.current || 0) * 10);
+  const sorted = [...plants].sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
+  for (const p of sorted) {
+    const div = document.createElement('div');
+    let cls = 'plant-item';
+    if (p.isMain) cls += ' plant-main';
+    if (p.isIsolated) cls += ' isolated';
+    if (selectedPos && selectedPos[0] === p.position[0] && selectedPos[1] === p.position[1]) cls += ' selected';
+    div.className = cls;
+    const pct = Math.round(p.hp / maxHp * 100);
+    const label = p.isMain ? '\u2605 \u0426\u0423' : '#' + p.id;
+    const isoLabel = p.isIsolated ? ' <span style="color:#e94560;font-size:11px">[изолирована]</span>' : '';
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between">
+        <span>${label} [${p.position[0]}, ${p.position[1]}]${isoLabel}</span>
+        <span>${p.hp}/${maxHp}</span>
+      </div>
+      <div class="hp-bar-wrap"><div class="hp-bar" style="width:${pct}%;background:${hpColor(p.hp, maxHp)}"></div></div>`;
+    div.onclick = () => {
+      selectedPos = [p.position[0], p.position[1]];
+      // Центрировать камеру
+      const cs = cellSize();
+      viewX = p.position[0] + 0.5 - wrap.clientWidth / cs / 2;
+      viewY = p.position[1] + 0.5 - wrap.clientHeight / cs / 2;
+      updateSelection();
+      updatePanel();
+      render();
+    };
+    pl.appendChild(div);
+  }
+
+  updateSelection();
+}
+
+function updateSelection() {
+  const el = document.getElementById('selection-detail');
+  if (!selectedPos || !state) {
+    el.innerHTML = '<span style="color:#666">Кликните на карту для выбора</span>';
+    return;
+  }
+  const [sx, sy] = selectedPos;
+  const key = k(sx, sy);
+  let lines = [`<b>Клетка [${sx}, ${sy}]</b>`];
+
+  if (isReinforced(sx, sy)) lines.push('\u2b50 Усиленная клетка (x1.5 очков)');
+  if (mountainSet.has(key)) lines.push('\u25b2 Гора (непроходима)');
+
+  const cell = cellMap.get(key);
+  if (cell) {
+    lines.push(`Терраформация: ${cell.terraformationProgress}%`);
+    if (cell.turnsUntilDegradation != null) lines.push(`Деградация через: ${cell.turnsUntilDegradation} ход.`);
+  }
+
+  const plant = plantMap.get(key);
+  if (plant) {
+    const maxHp = 50 + ((state.plantationUpgrades?.tiers?.find(t => t.name === 'max_hp')?.current || 0) * 10);
+    const label = plant.isMain ? '\u0426\u0423' : '\u041f\u043b\u0430\u043d\u0442\u0430\u0446\u0438\u044f';
+    lines.push(`<span style="color:#53d769">${label} #${plant.id}</span>`);
+    lines.push(`HP: ${plant.hp}/${maxHp}`);
+    if (plant.isIsolated) lines.push('<span style="color:#e94560">Изолирована!</span>');
+    if (plant.immunityUntilTurn) lines.push(`Иммунитет до хода ${plant.immunityUntilTurn}`);
+  }
+
+  const enemy = enemyMap.get(key);
+  if (enemy) lines.push(`<span style="color:#e94560">Враг #${enemy.id}</span> HP: ${enemy.hp}`);
+
+  const beaver = beaverMap.get(key);
+  if (beaver) lines.push(`<span style="color:#8d6e63">Бобры #${beaver.id}</span> HP: ${beaver.hp}/100`);
+
+  const con = constructionMap.get(key);
+  if (con) lines.push(`<span style="color:#42a5f5">Стройка</span> прогресс: ${con.progress}/50`);
+
+  el.innerHTML = lines.join('<br>');
+}
+
+// --- Тултип ---
+function showTooltip(e) {
+  if (!state || isDragging) { tooltip.style.display = 'none'; return; }
+
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const [gx, gy] = screenToWorld(mx, my);
+
+  mouseWorldX = gx;
+  mouseWorldY = gy;
+  document.getElementById('coords-display').textContent = `[${gx}, ${gy}]`;
+
+  const key = k(gx, gy);
+  let lines = [`[${gx}, ${gy}]`];
+  if (isReinforced(gx, gy)) lines[0] += ' \u2605';
+  if (mountainSet.has(key)) lines.push('\u0413\u043e\u0440\u0430');
+
+  const cell = cellMap.get(key);
+  if (cell) lines.push(`\u0422\u0435\u0440\u0440\u0430: ${cell.terraformationProgress}%`);
+
+  const plant = plantMap.get(key);
+  if (plant) lines.push(`${plant.isMain ? '\u0426\u0423' : '\u041f\u043b\u0430\u043d\u0442.'} #${plant.id} HP:${plant.hp}${plant.isIsolated ? ' [\u0438\u0437\u043e\u043b.]' : ''}`);
+
+  const enemy = enemyMap.get(key);
+  if (enemy) lines.push(`\u0412\u0440\u0430\u0433 #${enemy.id} HP:${enemy.hp}`);
+
+  const beaver = beaverMap.get(key);
+  if (beaver) lines.push(`\u0411\u043e\u0431\u0440\u044b #${beaver.id} HP:${beaver.hp}`);
+
+  const con = constructionMap.get(key);
+  if (con) lines.push(`\u0421\u0442\u0440\u043e\u0439\u043a\u0430: ${con.progress}/50`);
+
+  if (lines.length <= 1 && !mountainSet.has(key) && !cell) {
+    tooltip.style.display = 'none';
+    requestAnimationFrame(render);
+    return;
+  }
+
+  tooltip.innerHTML = lines.join('\n');
+  tooltip.style.display = 'block';
+
+  // Не вылезать за экран
+  let tx = e.clientX - rect.left + 14;
+  let ty = e.clientY - rect.top + 14;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top = ty + 'px';
+  const tb = tooltip.getBoundingClientRect();
+  if (tx + tb.width > rect.width) tx = e.clientX - rect.left - tb.width - 8;
+  if (ty + tb.height > rect.height) ty = e.clientY - rect.top - tb.height - 8;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top = ty + 'px';
+
+  requestAnimationFrame(render);
+}
+
+// --- Ввод: зум колесом ---
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  applyZoomAt(zoom * factor, mx, my);
+}, { passive: false });
+
+// --- Ввод: перетаскивание ---
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 0) {
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragViewX = viewX;
+    dragViewY = viewY;
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    const cs = cellSize();
+    viewX = dragViewX - (e.clientX - dragStartX) / cs;
+    viewY = dragViewY - (e.clientY - dragStartY) / cs;
+    render();
+  }
+  showTooltip(e);
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (isDragging && Math.abs(e.clientX - dragStartX) < 4 && Math.abs(e.clientY - dragStartY) < 4) {
+    const rect = canvas.getBoundingClientRect();
+    const [gx, gy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+    selectedPos = [gx, gy];
+    updateSelection();
+    updatePanel();
+    render();
+  }
+  isDragging = false;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  tooltip.style.display = 'none';
+  mouseWorldX = -1; mouseWorldY = -1;
+  document.getElementById('coords-display').textContent = '';
+  render();
+});
+
+// --- Клавиатура ---
+document.addEventListener('keydown', (e) => {
+  const step = 3;
+  if (e.key === 'ArrowLeft' || e.key === 'a') { viewX -= step; render(); }
+  else if (e.key === 'ArrowRight' || e.key === 'd') { viewX += step; render(); }
+  else if (e.key === 'ArrowUp' || e.key === 'w') { viewY -= step; render(); }
+  else if (e.key === 'ArrowDown' || e.key === 's') { viewY += step; render(); }
+  else if (e.key === '=' || e.key === '+') { zoomIn(); }
+  else if (e.key === '-') { zoomOut(); }
+  else if (e.key === '0') { zoomReset(); }
+  else if (e.key === 'h' || e.key === 'Home') { centerOnHQ(); }
+  else if (e.key === 'f') { fitPlantations(); }
+  else if (e.key === 'Escape') { selectedPos = null; updateSelection(); updatePanel(); render(); }
+});
+
+// --- Ресайз ---
+window.addEventListener('resize', render);
+
+// --- WebSocket ---
+let firstState = true;
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+
+  ws.onopen = () => {
+    document.getElementById('ws-status').textContent = '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u043e';
+    document.getElementById('ws-status').className = 'status-connected';
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'state') {
+        state = msg.data;
+        buildMaps(state);
+        if (firstState) {
+          centerOnHQ();
+          firstState = false;
+        }
+        render();
+        updatePanel();
+      }
+    } catch (err) {
+      console.error('WS parse error:', err);
+    }
+  };
+
+  ws.onclose = () => {
+    document.getElementById('ws-status').textContent = '\u041d\u0435\u0442 \u0441\u0432\u044f\u0437\u0438';
+    document.getElementById('ws-status').className = 'status-disconnected';
+    setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+connect();
+render();
+</script>
+</body>
+</html>

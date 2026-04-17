@@ -102,88 +102,100 @@ class CommandResult:
     raw_response: dict
 
 
+@dataclass(frozen=True, slots=True)
+class PlantationAction:
+    """Действие плантации: path = [автор, выходная_точка, цель]."""
+    path: list[Position]
+
+
 class Command:
-    """Builder для конструирования команды перед отправкой."""
+    """Builder для конструирования команды перед отправкой.
+
+    Формат API:
+    - command[]: массив {path: [[x1,y1], [x2,y2], [x3,y3]]}
+      где: [0]=автор, [1]=выходная точка, [2]=цель
+      Тип действия определяется целью:
+        - своя плантация → ремонт
+        - чужая плантация → диверсия
+        - логово бобров → атака
+        - пустая клетка → строительство
+    - plantationUpgrade: str — название апгрейда
+    - relocateMain: [[fromX,fromY], [toX,toY]] — перенос ЦУ
+    """
 
     def __init__(self) -> None:
-        self._moves: dict[str, Path] = {}
+        self._actions: list[PlantationAction] = []
         self._upgrade: str | None = None
-        self._relocate_main: Position | None = None
+        self._relocate_main: list[Position] | None = None
 
     # --- builder methods ---
 
-    def move_beaver(self, beaver_id: str, path: Path) -> Command:
-        """Задать путь для бобра."""
-        self._moves[beaver_id] = list(path)
+    def add_action(self, author: Position, exit_point: Position, target: Position) -> Command:
+        """Добавить действие плантации."""
+        self._actions.append(PlantationAction(path=[author, exit_point, target]))
         return self
+
+    def build(self, author: Position, target: Position) -> Command:
+        """Строительство напрямую (автор = выходная точка)."""
+        return self.add_action(author, author, target)
+
+    def build_via(self, author: Position, exit_point: Position, target: Position) -> Command:
+        """Строительство через выходную точку."""
+        return self.add_action(author, exit_point, target)
+
+    def repair(self, author: Position, target: Position) -> Command:
+        """Ремонт напрямую (автор = выходная точка)."""
+        return self.add_action(author, author, target)
+
+    def repair_via(self, author: Position, exit_point: Position, target: Position) -> Command:
+        """Ремонт через выходную точку."""
+        return self.add_action(author, exit_point, target)
+
+    def sabotage(self, author: Position, target: Position) -> Command:
+        """Диверсия напрямую."""
+        return self.add_action(author, author, target)
+
+    def sabotage_via(self, author: Position, exit_point: Position, target: Position) -> Command:
+        """Диверсия через выходную точку."""
+        return self.add_action(author, exit_point, target)
+
+    def attack_beaver(self, author: Position, target: Position) -> Command:
+        """Атака логова бобров напрямую."""
+        return self.add_action(author, author, target)
+
+    def attack_beaver_via(self, author: Position, exit_point: Position, target: Position) -> Command:
+        """Атака логова бобров через выходную точку."""
+        return self.add_action(author, exit_point, target)
 
     def upgrade_plantation(self, upgrade_type: str) -> Command:
         """Выбрать улучшение плантации."""
         self._upgrade = upgrade_type
         return self
 
-    def relocate_main_base(self, to: Position) -> Command:
-        """Переместить главную базу."""
-        self._relocate_main = tuple(to)  # type: ignore[assignment]
+    def relocate_main(self, from_pos: Position, to_pos: Position) -> Command:
+        """Переместить ЦУ на соседнюю плантацию."""
+        self._relocate_main = [from_pos, to_pos]
         return self
 
     # --- helpers ---
 
     def has_actions(self) -> bool:
-        """Есть ли какие-либо действия для отправки."""
-        return bool(self._moves or self._upgrade is not None or self._relocate_main is not None)
+        return bool(self._actions or self._upgrade is not None or self._relocate_main is not None)
 
     def to_dict(self) -> dict:
-        """Сериализовать в тело запроса для /api/command."""
-        payload: dict = {"command": []}
-        for beaver_id, path in self._moves.items():
-            payload["command"].append({
-                "beaverId": beaver_id,
-                "path": [list(p) for p in path],
-            })
+        """Сериализовать в тело запроса для POST /api/command."""
+        payload: dict = {}
+
+        if self._actions:
+            payload["command"] = [
+                {"path": [list(pos) for pos in action.path]}
+                for action in self._actions
+            ]
+
         if self._upgrade is not None:
             payload["plantationUpgrade"] = self._upgrade
+
         if self._relocate_main is not None:
-            payload["relocateMain"] = list(self._relocate_main)
+            payload["relocateMain"] = [list(pos) for pos in self._relocate_main]
+
         return payload
-
-    # --- validation ---
-
-    def validate(self, state: GameState) -> list[str]:
-        """Синхронная валидация команды относительно состояния игры."""
-        errors: list[str] = []
-        beaver_map = {b.id: b for b in state.beavers}
-        max_x, max_y = state.map_size
-
-        for beaver_id, path in self._moves.items():
-            if beaver_id not in beaver_map:
-                errors.append(f"Бобёр '{beaver_id}' не найден в состоянии игры.")
-                continue
-
-            if len(path) > state.action_range:
-                errors.append(
-                    f"Путь бобра '{beaver_id}' ({len(path)} клеток) превышает action_range={state.action_range}."
-                )
-
-            for idx, (x, y) in enumerate(path):
-                if not (0 <= x < max_x and 0 <= y < max_y):
-                    errors.append(
-                        f"Точка {idx} пути бобра '{beaver_id}' ({x},{y}) выходит за границы карты {max_x}x{max_y}."
-                    )
-                if (x, y) in state.mountains:
-                    errors.append(
-                        f"Точка {idx} пути бобра '{beaver_id}' ({x},{y}) проходит через гору."
-                    )
-
-        if self._relocate_main is not None:
-            rx, ry = self._relocate_main
-            if not (0 <= rx < max_x and 0 <= ry < max_y):
-                errors.append(
-                    f"Цель relocateMain ({rx},{ry}) выходит за границы карты {max_x}x{max_y}."
-                )
-            if (rx, ry) in state.mountains:
-                errors.append(
-                    f"Цель relocateMain ({rx},{ry}) находится на горе."
-                )
-
-        return errors

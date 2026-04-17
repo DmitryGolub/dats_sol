@@ -1,0 +1,22 @@
+services:
+  engine:
+    build: .
+    command: uv run python main.py
+    env_file: .env
+    volumes:
+      - game-data:/app/data
+    restart: unless-stopped
+
+  view:
+    build: .
+    command: uv run python -m view --port 8080 --file data/arena.json
+    volumes:
+      - game-data:/app/data
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    depends_on:
+      - engine
+
+volumes:
+  game-data:
