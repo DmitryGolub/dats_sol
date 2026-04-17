@@ -1,4 +1,4 @@
-.PHONY: run view up down build logs restart clean simulate tournament analyze
+.PHONY: run view up down build logs restart clean simulate tournament analyze versus snapshot snapshots
 
 run:
 	uv run python main.py
@@ -38,3 +38,12 @@ tournament:
 
 analyze:
 	uv run python -m strategy.analyzer $(ARGS)
+
+versus:
+	uv run python -m strategy.tournament --versus $(ARGS)
+
+snapshot:
+	uv run python -m strategy.snapshot create
+
+snapshots:
+	uv run python -m strategy.snapshot list

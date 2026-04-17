@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from strategy.bots import get_all_bots
-from strategy.runner import run_simulation
+from strategy.runner import run_simulation, run_match
 from strategy.core.rules import MAX_TURNS
 
 log = logging.getLogger("tournament")
@@ -17,7 +17,7 @@ EXPERIMENTS_DIR = Path(__file__).parent / "experiments"
 RUNS_CSV = EXPERIMENTS_DIR / "runs.csv"
 MATRIX_CSV = EXPERIMENTS_DIR / "tournament_matrix.csv"
 
-CSV_FIELDS = ["timestamp", "seed", "bot", "score", "hq_lost_turn", "max_plantations", "cells_terraformed", "turns"]
+CSV_FIELDS = ["timestamp", "seed", "bot", "score", "hq_lost_turn", "max_plantations", "cells_terraformed", "turns", "mode", "opponents"]
 
 
 def run_tournament(
@@ -26,6 +26,7 @@ def run_tournament(
     turns: int = MAX_TURNS,
     width: int = 80,
     height: int = 80,
+    versus: bool = False,
 ) -> list[dict]:
     all_bots = get_all_bots()
 
@@ -39,30 +40,61 @@ def run_tournament(
         names = list(all_bots.keys())
 
     seeds = list(range(1, num_seeds + 1))
+
+    if versus:
+        return _run_versus(names, seeds, turns, width, height, all_bots)
+    else:
+        return _run_solo(names, seeds, turns, width, height)
+
+
+def _run_solo(
+    names: list[str], seeds: list[int], turns: int, width: int, height: int,
+) -> list[dict]:
     total = len(names) * len(seeds)
     results: list[dict] = []
 
-    log.info("Турнир: %d ботов × %d сидов = %d партий", len(names), len(seeds), total)
+    log.info("Соло-турнир: %d ботов × %d сидов = %d партий", len(names), len(seeds), total)
 
     for i, bot_name in enumerate(names):
         for j, seed in enumerate(seeds):
             idx = i * len(seeds) + j + 1
             log.info("[%d/%d] %s seed=%d", idx, total, bot_name, seed)
-
-            result = run_simulation(
-                bot_name=bot_name,
-                seed=seed,
-                turns=turns,
-                width=width,
-                height=height,
-            )
+            result = run_simulation(bot_name=bot_name, seed=seed, turns=turns, width=width, height=height)
             result["timestamp"] = datetime.now().isoformat(timespec="seconds")
+            result["mode"] = "solo"
+            result["opponents"] = ""
             results.append(result)
 
     _save_results(results)
     _generate_matrix(results, names, seeds)
     _print_summary(results, names)
+    return results
 
+
+def _run_versus(
+    names: list[str], seeds: list[int], turns: int, width: int, height: int, all_bots: dict,
+) -> list[dict]:
+    if len(names) < 2:
+        log.error("Для versus-режима нужно минимум 2 бота. Доступные: %s", list(all_bots.keys()))
+        sys.exit(1)
+
+    total = len(seeds)
+    results: list[dict] = []
+
+    log.info("Versus-турнир: %d ботов × %d сидов = %d матчей", len(names), len(seeds), total)
+
+    for j, seed in enumerate(seeds):
+        log.info("[%d/%d] seed=%d: %s", j + 1, total, seed, " vs ".join(names))
+        match_results = run_match(bot_names=names, seed=seed, turns=turns, width=width, height=height)
+        for name, r in match_results.items():
+            r["timestamp"] = datetime.now().isoformat(timespec="seconds")
+            r["mode"] = "versus"
+            r["opponents"] = ",".join(n for n in names if n != name)
+            results.append(r)
+
+    _save_results(results)
+    _generate_matrix(results, names, seeds)
+    _print_summary(results, names)
     return results
 
 
@@ -96,9 +128,17 @@ def _generate_matrix(results: list[dict], bot_names: list[str], seeds: list[int]
 
 
 def _print_summary(results: list[dict], bot_names: list[str]) -> None:
-    print("\n" + "=" * 60)
-    print(f"{'Бот':<20} {'Ср. очки':>10} {'Мин':>8} {'Макс':>8} {'Пл.макс':>8}")
-    print("-" * 60)
+    mode = results[0].get("mode", "solo") if results else "solo"
+    print(f"\n{'=' * 70}")
+    print(f"{'Бот':<20} {'Ср. очки':>10} {'Мин':>8} {'Макс':>8} {'Пл.макс':>8} {'Win%':>7}")
+    print("-" * 70)
+
+    all_seeds = sorted({r["seed"] for r in results})
+    seed_winners: dict[int, str] = {}
+    for seed in all_seeds:
+        seed_results = [(r["bot"], r["score"]) for r in results if r["seed"] == seed]
+        if seed_results:
+            seed_winners[seed] = max(seed_results, key=lambda x: x[1])[0]
 
     for name in bot_names:
         bot_results = [r for r in results if r["bot"] == name]
@@ -110,9 +150,15 @@ def _print_summary(results: list[dict], bot_names: list[str]) -> None:
         min_s = min(scores)
         max_s = max(scores)
         mean_p = sum(plants) / len(plants)
-        print(f"{name:<20} {mean_s:>10.0f} {min_s:>8.0f} {max_s:>8.0f} {mean_p:>8.1f}")
+        wins = sum(1 for s in all_seeds if seed_winners.get(s) == name)
+        win_pct = wins / len(all_seeds) * 100 if all_seeds else 0
+        print(f"{name:<20} {mean_s:>10.0f} {min_s:>8.0f} {max_s:>8.0f} {mean_p:>8.1f} {win_pct:>6.1f}%")
 
-    print("=" * 60)
+    print("=" * 70)
+
+    if mode == "versus":
+        best = max(bot_names, key=lambda n: sum(r["score"] for r in results if r["bot"] == n))
+        print(f"Победитель: {best}")
 
 
 def main() -> None:
@@ -124,6 +170,7 @@ def main() -> None:
     parser.add_argument("--turns", type=int, default=MAX_TURNS)
     parser.add_argument("--width", type=int, default=80)
     parser.add_argument("--height", type=int, default=80)
+    parser.add_argument("--versus", action="store_true", help="Мультиплеер: все боты на одной карте")
     args = parser.parse_args()
 
     bot_names = [n.strip() for n in args.bots.split(",") if n.strip()] or None
@@ -134,6 +181,7 @@ def main() -> None:
         turns=args.turns,
         width=args.width,
         height=args.height,
+        versus=args.versus,
     )
 
 

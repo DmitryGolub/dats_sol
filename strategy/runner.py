@@ -22,77 +22,103 @@ def run_simulation(
     mountain_density: float = 0.08,
     verbose: bool = False,
 ) -> dict:
-    bots = get_all_bots()
-    if bot_name not in bots:
-        log.error("Бот '%s' не найден. Доступные: %s", bot_name, list(bots.keys()))
-        sys.exit(1)
+    return run_match(
+        bot_names=[bot_name],
+        seed=seed,
+        turns=turns,
+        width=width,
+        height=height,
+        mountain_density=mountain_density,
+        verbose=verbose,
+    )[bot_name]
 
-    bot = bots[bot_name]()
-    bot.reset()
 
-    world = generate_map(seed, width, height, mountain_density, num_players=1)
-    player_id = "p0"
+def run_match(
+    bot_names: list[str],
+    seed: int = 1,
+    turns: int = MAX_TURNS,
+    width: int = 80,
+    height: int = 80,
+    mountain_density: float = 0.08,
+    verbose: bool = False,
+) -> dict[str, dict]:
+    all_bots = get_all_bots()
+    for name in bot_names:
+        if name not in all_bots:
+            log.error("Бот '%s' не найден. Доступные: %s", name, list(all_bots.keys()))
+            sys.exit(1)
 
-    max_plantations = 0
-    cells_terraformed = 0
+    num_players = len(bot_names)
+    world = generate_map(seed, width, height, mountain_density, num_players=num_players)
 
+    player_ids = [f"p{i}" for i in range(num_players)]
+    bots = {}
+    for i, name in enumerate(bot_names):
+        bot = all_bots[name]()
+        bot.reset()
+        bots[player_ids[i]] = (name, bot)
+
+    max_plants: dict[str, int] = {pid: 0 for pid in player_ids}
     start = time.monotonic()
 
     for turn in range(turns):
-        ps = world.players[player_id]
-        if ps.hq_lost_turn >= 0 and not world.get_player_plantations(player_id):
-            pass
+        commands: dict[str, Command] = {}
+        for pid, (name, bot) in bots.items():
+            perception = world.to_game_state(pid)
+            try:
+                cmd = bot.decide(perception)
+            except Exception as exc:
+                if verbose:
+                    log.warning("Ход %d, %s: ошибка: %s", turn, name, exc)
+                cmd = Command()
+            commands[pid] = cmd
 
-        perception = world.to_game_state(player_id)
-
-        try:
-            cmd = bot.decide(perception)
-        except Exception as exc:
-            log.warning("Ход %d: ошибка бота: %s", turn, exc)
-            cmd = Command()
-
-        commands = {player_id: cmd}
         simulate_turn(world, commands)
 
-        plant_count = len(world.get_player_plantations(player_id))
-        max_plantations = max(max_plantations, plant_count)
-        cells_terraformed = sum(
-            1 for c in world.terraformed.values() if c.progress > 0
-        )
+        for pid in player_ids:
+            count = len(world.get_player_plantations(pid))
+            if count > max_plants[pid]:
+                max_plants[pid] = count
 
         if verbose and turn % 50 == 0:
-            log.info(
-                "Ход %3d | Очки: %8.0f | Плантаций: %2d | Клеток: %3d",
-                turn, ps.score, plant_count, cells_terraformed,
-            )
+            parts = []
+            for pid, (name, _) in bots.items():
+                ps = world.players[pid]
+                pc = len(world.get_player_plantations(pid))
+                parts.append(f"{name}={ps.score:.0f}({pc}p)")
+            log.info("Ход %3d | %s", turn, " | ".join(parts))
 
     elapsed = time.monotonic() - start
-    ps = world.players[player_id]
 
-    result = {
-        "seed": seed,
-        "bot": bot_name,
-        "score": ps.score,
-        "hq_lost_turn": ps.hq_lost_turn if ps.hq_lost_turn >= 0 else None,
-        "max_plantations": max_plantations,
-        "cells_terraformed": cells_terraformed,
-        "turns": turns,
-        "elapsed": round(elapsed, 2),
-    }
+    results: dict[str, dict] = {}
+    for pid, (name, _) in bots.items():
+        ps = world.players[pid]
+        cells = sum(1 for c in world.terraformed.values() if c.progress > 0)
+        results[name] = {
+            "seed": seed,
+            "bot": name,
+            "score": ps.score,
+            "hq_lost_turn": ps.hq_lost_turn if ps.hq_lost_turn >= 0 else None,
+            "max_plantations": max_plants[pid],
+            "cells_terraformed": cells,
+            "turns": turns,
+            "elapsed": round(elapsed, 2),
+        }
 
     if verbose:
-        log.info("--- Итог ---")
-        log.info("Бот: %s | Сид: %d | Очки: %.0f", bot_name, seed, ps.score)
-        log.info("Макс. плантаций: %d | Клеток: %d | Время: %.2fs", max_plantations, cells_terraformed, elapsed)
+        log.info("--- Итог (%.2fs) ---", elapsed)
+        ranking = sorted(results.values(), key=lambda r: -r["score"])
+        for i, r in enumerate(ranking):
+            log.info("#%d %s: %.0f очков, макс %d плантаций", i + 1, r["bot"], r["score"], r["max_plantations"])
 
-    return result
+    return results
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 
-    parser = argparse.ArgumentParser(description="Запуск одной симуляции DatsSol")
-    parser.add_argument("--bot", default="current")
+    parser = argparse.ArgumentParser(description="Симуляция DatsSol (соло или мультиплеер)")
+    parser.add_argument("--bots", default="current", help="Имена ботов через запятую (напр. current,v001)")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--turns", type=int, default=MAX_TURNS)
     parser.add_argument("--width", type=int, default=80)
@@ -101,8 +127,10 @@ def main() -> None:
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
-    result = run_simulation(
-        bot_name=args.bot,
+    bot_names = [n.strip() for n in args.bots.split(",") if n.strip()]
+
+    results = run_match(
+        bot_names=bot_names,
         seed=args.seed,
         turns=args.turns,
         width=args.width,
@@ -111,10 +139,11 @@ def main() -> None:
         verbose=args.verbose,
     )
 
-    hq = result["hq_lost_turn"] or "none"
-    print(f"seed={result['seed']} bot={result['bot']} score={result['score']:.0f} "
-          f"max_plantations={result['max_plantations']} cells={result['cells_terraformed']} "
-          f"hq_lost={hq} time={result['elapsed']}s")
+    for name, r in results.items():
+        hq = r["hq_lost_turn"] or "none"
+        print(f"bot={name} seed={r['seed']} score={r['score']:.0f} "
+              f"max_plantations={r['max_plantations']} cells={r['cells_terraformed']} "
+              f"hq_lost={hq}")
 
 
 if __name__ == "__main__":
