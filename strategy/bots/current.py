@@ -65,10 +65,9 @@ class CurrentBot(BaseStrategy):
 
         max_hp = self._get_max_hp(state)
         assigned: set[Position] = set()
-        exit_usage: dict[Position, int] = defaultdict(int)
 
-        self._assign_repairs(state, cmd, assigned, exit_usage, plant_by_pos, own_positions, max_hp, hq)
-        self._assign_builds(state, cmd, assigned, exit_usage, plant_by_pos, own_positions, construction_positions, hq)
+        self._assign_repairs(state, cmd, assigned, plant_by_pos, own_positions, max_hp, hq)
+        self._assign_builds(state, cmd, assigned, plant_by_pos, own_positions, construction_positions, hq)
         self._maybe_relocate_hq(state, cmd, hq, own_positions)
 
         return cmd
@@ -107,7 +106,6 @@ class CurrentBot(BaseStrategy):
         state: GameState,
         cmd: Command,
         assigned: set[Position],
-        exit_usage: dict[Position, int],
         plant_by_pos: dict[Position, Plantation],
         own_positions: set[Position],
         max_hp: int,
@@ -120,27 +118,30 @@ class CurrentBot(BaseStrategy):
 
         for target in damaged:
             best_repairer: Position | None = None
-            best_exit: Position | None = None
-            best_key = (999, 999)
+            best_dist = 999
 
             for p in state.plantations:
                 if p.position in assigned or p.is_isolated or p.position == target.position:
                     continue
-                exit_point = self._find_exit_point(p.position, target.position, own_positions, state, exit_usage)
-                if exit_point is None:
-                    continue
                 dist = _chebyshev(p.position, target.position)
-                key = (exit_usage[exit_point], dist)
-                if key < best_key:
-                    best_key = key
+                if dist <= state.action_range and dist < best_dist:
                     best_repairer = p.position
-                    best_exit = exit_point
+                    best_dist = dist
 
-            if best_repairer is not None and best_exit is not None:
+            if best_repairer is None:
+                for p in state.plantations:
+                    if p.position in assigned or p.is_isolated or p.position == target.position:
+                        continue
+                    exit_point = self._find_exit_point(p.position, target.position, own_positions, state)
+                    if exit_point is not None:
+                        best_repairer = p.position
+                        break
+
+            if best_repairer is not None:
                 assigned.add(best_repairer)
-                exit_usage[best_exit] += 1
-                if best_exit != best_repairer:
-                    cmd.repair_via(best_repairer, best_exit, target.position)
+                exit_point = self._find_exit_point(best_repairer, target.position, own_positions, state)
+                if exit_point is not None and exit_point != best_repairer:
+                    cmd.repair_via(best_repairer, exit_point, target.position)
                 else:
                     cmd.repair(best_repairer, target.position)
 
@@ -149,12 +150,12 @@ class CurrentBot(BaseStrategy):
         state: GameState,
         cmd: Command,
         assigned: set[Position],
-        exit_usage: dict[Position, int],
         plant_by_pos: dict[Position, Plantation],
         own_positions: set[Position],
         construction_positions: set[Position],
         hq: Plantation,
     ) -> None:
+        active_constructions = {c.position: c for c in state.constructions}
         frontier = self._score_frontier(state, own_positions, construction_positions, hq)
 
         target_assignments: dict[Position, int] = defaultdict(int)
@@ -165,55 +166,35 @@ class CurrentBot(BaseStrategy):
 
             best_builder: Position | None = None
             best_exit: Position | None = None
-            best_key = (999, 999)
+            best_dist = 999
 
             for p in state.plantations:
                 if p.position in assigned or p.is_isolated:
                     continue
-                exit_point = self._find_exit_point(p.position, target_pos, own_positions, state, exit_usage)
-                if exit_point is None:
+
+                if _chebyshev(p.position, target_pos) <= state.action_range:
+                    dist = _chebyshev(p.position, target_pos)
+                    if dist < best_dist:
+                        best_builder = p.position
+                        best_exit = p.position
+                        best_dist = dist
                     continue
-                dist = _chebyshev(p.position, target_pos)
-                key = (exit_usage[exit_point], dist)
-                if key < best_key:
-                    best_key = key
-                    best_builder = p.position
-                    best_exit = exit_point
+
+                exit_point = self._find_exit_point(p.position, target_pos, own_positions, state)
+                if exit_point is not None:
+                    dist = _chebyshev(p.position, target_pos)
+                    if dist < best_dist:
+                        best_builder = p.position
+                        best_exit = exit_point
+                        best_dist = dist
 
             if best_builder is not None and best_exit is not None:
                 assigned.add(best_builder)
-                exit_usage[best_exit] += 1
                 target_assignments[target_pos] += 1
                 if best_exit == best_builder:
                     cmd.build(best_builder, target_pos)
                 else:
                     cmd.build_via(best_builder, best_exit, target_pos)
-
-        for p in state.plantations:
-            if p.position in assigned or p.is_isolated:
-                continue
-            chosen_target: Position | None = None
-            chosen_exit: Position | None = None
-            best_key = (999, 999)
-            for target_pos, score in frontier:
-                if target_assignments[target_pos] >= 3:
-                    continue
-                exit_point = self._find_exit_point(p.position, target_pos, own_positions, state, exit_usage)
-                if exit_point is None:
-                    continue
-                key = (exit_usage[exit_point], -score)
-                if key < best_key:
-                    best_key = key
-                    chosen_target = target_pos
-                    chosen_exit = exit_point
-            if chosen_target is not None and chosen_exit is not None:
-                assigned.add(p.position)
-                exit_usage[chosen_exit] += 1
-                target_assignments[chosen_target] += 1
-                if chosen_exit == p.position:
-                    cmd.build(p.position, chosen_target)
-                else:
-                    cmd.build_via(p.position, chosen_exit, chosen_target)
 
     def _score_frontier(
         self,
@@ -228,13 +209,7 @@ class CurrentBot(BaseStrategy):
 
         candidates: dict[Position, float] = {}
 
-        # Don't let the bot reinforce a construction sitting on (or under) an HQ cell
-        # that is close to completing terraformation — HQ dies if the cell hits 100%.
-        hq_progress = self._terraform_progress(state, hq.position)
-
         for con in state.constructions:
-            if con.position == hq.position and hq_progress > 80:
-                continue
             score = 100.0 + con.progress * 2
             if _is_reinforced(con.position):
                 score += 50
@@ -301,7 +276,6 @@ class CurrentBot(BaseStrategy):
         target: Position,
         own_positions: set[Position],
         state: GameState,
-        exit_usage: dict[Position, int] | None = None,
     ) -> Position | None:
         if _chebyshev(author, target) <= state.action_range:
             return author
@@ -314,7 +288,7 @@ class CurrentBot(BaseStrategy):
                     break
 
         best: Position | None = None
-        best_key = (999, 999)
+        best_dist = 999
 
         for pos in own_positions:
             if pos == author:
@@ -324,19 +298,11 @@ class CurrentBot(BaseStrategy):
             if _chebyshev(pos, target) > state.action_range:
                 continue
             dist = _chebyshev(pos, target)
-            usage = exit_usage[pos] if exit_usage is not None else 0
-            key = (usage, dist)
-            if key < best_key:
+            if dist < best_dist:
                 best = pos
-                best_key = key
+                best_dist = dist
 
         return best
-
-    def _terraform_progress(self, state: GameState, pos: Position) -> int:
-        for cell in state.terraformed_cells:
-            if cell.position == pos:
-                return cell.terraformation_progress
-        return 0
 
     def _maybe_relocate_hq(
         self,
@@ -348,38 +314,40 @@ class CurrentBot(BaseStrategy):
         if len(state.plantations) < 2:
             return
 
-        hq_progress = self._terraform_progress(state, hq.position)
+        terraform_progress = 0
+        for cell in state.terraformed_cells:
+            if cell.position == hq.position:
+                terraform_progress = cell.terraformation_progress
+                break
+
+        urgent = terraform_progress >= 85
+
         hq_neighbors = sum(1 for nb in _adjacent(hq.position) if nb in own_positions)
 
-        # Early return: HQ not in danger and sits on a well-connected cell
-        if hq_progress < 80 and hq_neighbors >= 2:
+        if not urgent and hq_neighbors >= 2:
+            return
+        if not urgent and len(state.plantations) < 5:
             return
 
         best_candidate: Position | None = None
         best_score = -1
-        best_neighbors = 0
 
         for nb_pos in _adjacent(hq.position):
             if nb_pos not in own_positions:
                 continue
-            nb_progress = self._terraform_progress(state, nb_pos)
-            if nb_progress >= 95:
+            nb_terraform = 0
+            for cell in state.terraformed_cells:
+                if cell.position == nb_pos:
+                    nb_terraform = cell.terraformation_progress
+                    break
+            if nb_terraform >= 90:
                 continue
             neighbor_count = sum(1 for n2 in _adjacent(nb_pos) if n2 in own_positions)
-            score = (100 - nb_progress) + neighbor_count * 20
-            if neighbor_count >= 2:
-                score += 100
+            score = neighbor_count * 10 + (100 - nb_terraform)
             if score > best_score:
                 best_score = score
                 best_candidate = nb_pos
-                best_neighbors = neighbor_count
 
-        if best_candidate is None:
-            return
-
-        # Below 90%: require a well-connected target (≥2 own neighbors).
-        # At 90%+: forced move — HQ dies at 100%, so accept any adjacent own cell.
-        if hq_progress < 90 and best_neighbors < 2:
-            return
-
-        cmd.relocate_main(hq.position, best_candidate)
+        if best_candidate is not None:
+            if urgent or best_score >= 20:
+                cmd.relocate_main(hq.position, best_candidate)
