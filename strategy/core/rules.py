@@ -227,6 +227,10 @@ def _phase_repair_build(world: WorldState, classified: dict[str, dict[str, list]
                 del world.constructions[(cell, owner)]
             continue
         owner = owners[0]
+        # Клетка уже занята — стройка невозможна
+        if any(p.position == cell for p in world.plantations.values()):
+            del world.constructions[(cell, owner)]
+            continue
         ps = world.players[owner]
         # Проверка лимита (включая изолированные)
         own_count = sum(1 for p in world.plantations.values() if p.owner == owner)
@@ -247,10 +251,9 @@ def _phase_repair_build(world: WorldState, classified: dict[str, dict[str, list]
         )
         world.plantations[plant_id] = new_plant
         ps.built_plantations += 1
-        # очистить ВСЕ постройки на этой клетке (включая собственную)
-        to_del = [key for key in world.constructions.keys() if key[0] == cell]
-        for key in to_del:
-            del world.constructions[key]
+        # очистить собственную постройку на этой клетке
+        if (cell, owner) in world.constructions:
+            del world.constructions[(cell, owner)]
 
 
 # ---------- phase 3: sabotage ----------
