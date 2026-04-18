@@ -62,6 +62,14 @@ def run_match(
         bots[player_ids[i]] = (name, bot)
 
     max_plants: dict[str, int] = {pid: 0 for pid in player_ids}
+    turns_ge_20: dict[str, int] = {pid: 0 for pid in player_ids}
+    turns_ge_30: dict[str, int] = {pid: 0 for pid in player_ids}
+    turns_ge_35: dict[str, int] = {pid: 0 for pid in player_ids}
+    hq_relocations: dict[str, int] = {pid: 0 for pid in player_ids}
+    turns_low_hq_escape: dict[str, int] = {pid: 0 for pid in player_ids}
+    score_deltas_50: dict[str, list[float]] = {pid: [] for pid in player_ids}
+    prev_hq_pos: dict[str, tuple[int, int] | None] = {pid: None for pid in player_ids}
+    prev_score_50: dict[str, float] = {pid: 0.0 for pid in player_ids}
     start = time.monotonic()
 
     for turn in range(turns):
@@ -82,6 +90,28 @@ def run_match(
             count = len(world.get_player_plantations(pid))
             if count > max_plants[pid]:
                 max_plants[pid] = count
+            if count >= 20:
+                turns_ge_20[pid] += 1
+            if count >= 30:
+                turns_ge_30[pid] += 1
+            if count >= 35:
+                turns_ge_35[pid] += 1
+
+            hq = world.find_hq(pid)
+            hq_pos = hq.position if hq is not None else None
+            if prev_hq_pos[pid] is not None and hq_pos is not None and prev_hq_pos[pid] != hq_pos:
+                hq_relocations[pid] += 1
+            prev_hq_pos[pid] = hq_pos
+
+            if hq_pos is not None:
+                safe_neighbors = _count_safe_hq_neighbors(world, pid, hq_pos)
+                if safe_neighbors < 2:
+                    turns_low_hq_escape[pid] += 1
+
+            if turn > 0 and turn % 50 == 0:
+                ps = world.players[pid]
+                score_deltas_50[pid].append(round(ps.score - prev_score_50[pid], 2))
+                prev_score_50[pid] = ps.score
 
         if verbose and turn % 50 == 0:
             parts = []
@@ -139,6 +169,12 @@ def run_match(
             "limit_lost_plantations": ps.limit_lost_plantations,
             "turns": turns,
             "elapsed": round(elapsed, 2),
+            "turns_ge_20": turns_ge_20[pid],
+            "turns_ge_30": turns_ge_30[pid],
+            "turns_ge_35": turns_ge_35[pid],
+            "hq_relocations": hq_relocations[pid],
+            "turns_low_hq_escape": turns_low_hq_escape[pid],
+            "score_deltas_50": score_deltas_50[pid],
         }
 
     if verbose:
@@ -148,6 +184,25 @@ def run_match(
             log.info("#%d %s: %.0f очков, макс %d плантаций", i + 1, r["bot"], r["score"], r["max_plantations"])
 
     return results
+
+
+def _count_safe_hq_neighbors(world, pid: str, hq_pos: tuple[int, int]) -> int:
+    plant_positions = {p.position for p in world.plantations.values() if p.owner == pid}
+    safe = 0
+    for nb in ((hq_pos[0] + 1, hq_pos[1]), (hq_pos[0] - 1, hq_pos[1]), (hq_pos[0], hq_pos[1] + 1), (hq_pos[0], hq_pos[1] - 1)):
+        if nb not in plant_positions:
+            continue
+        cell = world.terraformed.get(nb)
+        progress = cell.progress if cell is not None else 0
+        if progress >= 55:
+            continue
+        beaver_dist = 999
+        for lodge in world.beaver_lodges.values():
+            beaver_dist = min(beaver_dist, max(abs(nb[0] - lodge.position[0]), abs(nb[1] - lodge.position[1])))
+        if beaver_dist <= 2:
+            continue
+        safe += 1
+    return safe
 
 
 def main() -> None:

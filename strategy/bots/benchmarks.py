@@ -926,17 +926,213 @@ class BenchmarkBlobBot(_BenchmarkBase):
         return score
 
 
+class BenchmarkPeakBot(BenchmarkBlobBot):
+    name = "bench_peak"
+    lodge_commit_turn = 999
+    late_lodge_bias = 0.0
+
+    def decide(self, state: GameState) -> Command:
+        cmd = Command()
+        if not state.plantations:
+            return cmd
+        if not self._initialized:
+            self._init(state)
+
+        hq = next((p for p in state.plantations if p.is_main), None)
+        if hq is None:
+            return cmd
+
+        own_positions = {p.position for p in state.plantations}
+        plant_by_pos = {p.position: p for p in state.plantations}
+        terraform_by_pos = {cell.position: cell for cell in state.terraformed_cells}
+
+        self._apply_upgrade_peak(state, cmd)
+
+        assigned: set[Position] = set()
+        self._assign_repairs(state, cmd, assigned, own_positions, hq)
+        self._assign_builds_peak(state, cmd, assigned, own_positions, hq, terraform_by_pos)
+        self._maybe_relocate_hq_peak(state, cmd, own_positions, plant_by_pos, hq, terraform_by_pos)
+        return cmd
+
+    def _apply_upgrade_peak(self, state: GameState, cmd: Command) -> None:
+        upgrades = state.plantation_upgrades
+        if upgrades is None or upgrades.points <= 0:
+            return
+        tier_map = {tier.name: tier for tier in upgrades.tiers}
+        plant_count = len(state.plantations)
+        construction_count = len(state.constructions)
+        limit = self._plantation_limit_peak(state)
+
+        for name in ["signal_range", "repair_power", "decay_mitigation"]:
+            tier = tier_map.get(name)
+            if tier and tier.current < tier.max:
+                cmd.upgrade_plantation(name)
+                return
+
+        if plant_count + construction_count >= limit - 2 or state.turn_no >= 260:
+            tier = tier_map.get("settlement_limit")
+            if tier and tier.current < tier.max:
+                cmd.upgrade_plantation("settlement_limit")
+                return
+
+        for name in ["max_hp", "vision_range", "beaver_damage_mitigation", "earthquake_mitigation"]:
+            tier = tier_map.get(name)
+            if tier and tier.current < tier.max:
+                cmd.upgrade_plantation(name)
+                return
+
+    def _assign_builds_peak(
+        self,
+        state: GameState,
+        cmd: Command,
+        assigned: set[Position],
+        own_positions: set[Position],
+        hq: Plantation,
+        terraform_by_pos: dict[Position, TerraformCell],
+    ) -> None:
+        self._assign_builds(state, cmd, assigned, own_positions, hq)
+
+    def _prioritize_peak_targets(
+        self,
+        state: GameState,
+        own_positions: set[Position],
+        hq: Plantation,
+        terraform_by_pos: dict[Position, TerraformCell],
+        frontier: list[tuple[Position, float]],
+    ) -> list[tuple[Position, str, float]]:
+        safe_hq_positions = set(self._safe_hq_positions_peak(state, own_positions, hq.position, terraform_by_pos))
+        prioritized: list[tuple[Position, str, float]] = []
+        for pos, score in frontier:
+            if pos in self._mountains:
+                continue
+            target_class = "scoring_frontier"
+            adjusted = score
+            dist_hq = _manhattan(pos, hq.position)
+            progress = terraform_by_pos.get(pos).terraformation_progress if pos in terraform_by_pos else 0
+            beaver_dist = self._nearest_beaver_distance(pos, state.beavers)
+            own_neighbors = sum(1 for n in _adjacent(pos) if n in own_positions)
+
+            if pos in safe_hq_positions:
+                target_class = "hq_escape"
+                adjusted += 260
+            elif dist_hq <= 1:
+                adjusted += 60
+
+            if own_neighbors >= 2 and dist_hq <= 4:
+                target_class = "connector" if target_class == "scoring_frontier" else target_class
+                adjusted += 40
+
+            if beaver_dist <= 2:
+                target_class = "hazard_zone"
+                adjusted -= 220
+            elif beaver_dist <= 4:
+                adjusted -= 40
+
+            if progress >= 100 and target_class == "scoring_frontier":
+                adjusted += 80
+            prioritized.append((pos, target_class, adjusted))
+        prioritized.sort(key=lambda item: (-self._target_class_rank(item[1]), -item[2]))
+        return prioritized
+
+    def _target_class_rank(self, target_class: str) -> int:
+        return {
+            "hq_escape": 5,
+            "connector": 4,
+            "scoring_frontier": 3,
+            "hazard_zone": 2,
+        }.get(target_class, 0)
+
+    def _peak_builder_cap(
+        self,
+        target_class: str,
+        score: float,
+        turn_no: int,
+        pos: Position,
+        terraform_by_pos: dict[Position, TerraformCell],
+    ) -> int:
+        if target_class == "hq_escape":
+            return 3
+        if target_class == "connector":
+            return 2 if turn_no < 220 else 3
+        if target_class == "hazard_zone":
+            return 1
+        terraform = terraform_by_pos.get(pos)
+        if terraform is not None and terraform.terraformation_progress >= 80:
+            return 3
+        if _is_reinforced(pos) or score >= 140:
+            return 2 if turn_no < 180 else 3
+        return 1 if turn_no < 180 else 2
+
+    def _safe_hq_positions_peak(
+        self,
+        state: GameState,
+        own_positions: set[Position],
+        hq_pos: Position,
+        terraform_by_pos: dict[Position, TerraformCell],
+    ) -> list[Position]:
+        safe: list[tuple[float, Position]] = []
+        plant_by_pos = {p.position: p for p in state.plantations}
+        max_hp = self._max_hp_peak(state)
+        for nb_pos in _adjacent(hq_pos):
+            if nb_pos in self._mountains:
+                continue
+            if not (0 <= nb_pos[0] < self._map_size[0] and 0 <= nb_pos[1] < self._map_size[1]):
+                continue
+            plant = plant_by_pos.get(nb_pos)
+            if plant is not None and plant.is_isolated:
+                continue
+            progress = terraform_by_pos.get(nb_pos).terraformation_progress if nb_pos in terraform_by_pos else 0
+            beaver_dist = self._nearest_beaver_distance(nb_pos, state.beavers)
+            if progress >= 55 or beaver_dist <= 2:
+                continue
+            hp_ratio = (plant.hp / max(1, max_hp)) if plant is not None else 0.5
+            exits = sum(1 for n in _adjacent(nb_pos) if n in own_positions and n != hq_pos)
+            score = (55 - progress) * 4 + beaver_dist * 12 + hp_ratio * 30 + exits * 20
+            safe.append((score, nb_pos))
+        safe.sort(reverse=True)
+        return [pos for _, pos in safe]
+
+    def _maybe_relocate_hq_peak(
+        self,
+        state: GameState,
+        cmd: Command,
+        own_positions: set[Position],
+        plant_by_pos: dict[Position, Plantation],
+        hq: Plantation,
+        terraform_by_pos: dict[Position, TerraformCell],
+    ) -> None:
+        self._maybe_relocate_hq(state, cmd, own_positions, plant_by_pos, hq)
+
+    def _max_hp_peak(self, state: GameState) -> int:
+        hp = 50
+        if state.plantation_upgrades:
+            for tier in state.plantation_upgrades.tiers:
+                if tier.name == "max_hp":
+                    hp = 50 + tier.current * 10
+                    break
+        return hp
+
+    def _plantation_limit_peak(self, state: GameState) -> int:
+        limit = 30
+        if state.plantation_upgrades:
+            for tier in state.plantation_upgrades.tiers:
+                if tier.name == "settlement_limit":
+                    limit = 30 + tier.current
+                    break
+        return limit
+
+
 class BenchmarkFactoryBot(_BenchmarkBase):
     name = "bench_factory"
     upgrade_priority = [
-        "repair_power",
-        "settlement_limit",
         "signal_range",
-        "max_hp",
+        "repair_power",
         "decay_mitigation",
+        "max_hp",
         "vision_range",
         "beaver_damage_mitigation",
         "earthquake_mitigation",
+        "settlement_limit",
     ]
     repair_threshold = 0.38
     critical_repair_threshold = 0.62
@@ -952,6 +1148,35 @@ class BenchmarkFactoryBot(_BenchmarkBase):
     dense_bonus = 26.0
     lodge_commit_turn = 999
     late_lodge_bias = 0.0
+
+    def _apply_upgrade(self, state: GameState, cmd: Command) -> None:
+        upgrades = state.plantation_upgrades
+        if upgrades is None or upgrades.points <= 0:
+            return
+        tier_map = {tier.name: tier for tier in upgrades.tiers}
+        current_count = len(state.plantations)
+        limit = self._plantation_limit(state)
+        under_pressure = current_count + len(state.constructions) >= limit - 2
+
+        for name in ["signal_range", "repair_power", "decay_mitigation"]:
+            tier = tier_map.get(name)
+            if tier and tier.current < tier.max:
+                cmd.upgrade_plantation(name)
+                return
+
+        for name in ["max_hp", "vision_range", "beaver_damage_mitigation", "earthquake_mitigation"]:
+            tier = tier_map.get(name)
+            if tier and tier.current < tier.max:
+                if name == "max_hp" and current_count < 8 and state.turn_no < 120:
+                    continue
+                cmd.upgrade_plantation(name)
+                return
+
+        if under_pressure or state.turn_no >= 240:
+            tier = tier_map.get("settlement_limit")
+            if tier and tier.current < tier.max:
+                cmd.upgrade_plantation("settlement_limit")
+                return
 
     def decide(self, state: GameState) -> Command:
         cmd = Command()
@@ -1056,15 +1281,18 @@ class BenchmarkFactoryBot(_BenchmarkBase):
         used_exits: dict[Position, int] = defaultdict(int)
         limit = self._plantation_limit(state)
         current_count = len(state.plantations)
-        overbuild_allowance = 10 if state.turn_no < 120 else 6 if state.turn_no < 280 else 3
+        overbuild_allowance = 4 if state.turn_no < 120 else 5 if state.turn_no < 280 else 3
         immediate_budget = max(1, limit + overbuild_allowance - current_count)
-        pipeline_cap = max(8, current_count // 2 + 8)
+        pipeline_cap = max(12, current_count * 2 + 4) if current_count < 10 else max(10, current_count // 2 + 10)
         staged_count = len(state.constructions)
         births_committed = 0
+        early_spread = state.turn_no < 70 and current_count < 6
 
         for target_pos, priority in targets:
             if not available:
                 break
+            if target_pos in self._mountains:
+                continue
             progress = construction_by_pos.get(target_pos).progress if target_pos in construction_by_pos else 0
             required = max(0, 50 - progress)
             candidates: list[tuple[float, Position, Position, int]] = []
@@ -1084,6 +1312,27 @@ class BenchmarkFactoryBot(_BenchmarkBase):
             if not candidates:
                 continue
             candidates.sort(reverse=True)
+
+            if early_spread and progress <= 0:
+                spread_take = min(len(candidates), 2 if current_count >= 3 else 1)
+                committed = []
+                for _, author, exit_point, _ in candidates[:spread_take]:
+                    eff = max(0, self._construction_speed(state) - used_exits[exit_point])
+                    if eff <= 0:
+                        continue
+                    committed.append((author, exit_point, eff))
+                    used_exits[exit_point] += 1
+                if committed:
+                    committed_authors = {author for author, _, _ in committed}
+                    available = [p for p in available if p.position not in committed_authors]
+                    for author, exit_point, _ in committed:
+                        assigned.add(author)
+                        if exit_point == author:
+                            cmd.build(author, target_pos)
+                        else:
+                            cmd.build_via(author, exit_point, target_pos)
+                    staged_count += 1
+                    continue
 
             committed: list[tuple[Position, Position, int]] = []
             total = 0
@@ -1158,21 +1407,22 @@ class BenchmarkFactoryBot(_BenchmarkBase):
         construction_by_pos = {c.position: c for c in state.constructions}
         beaver_positions = [b.position for b in state.beavers]
         candidates: dict[Position, float] = {}
-        hq_escape_neighbors = 0
-        for nb in _adjacent(hq.position):
-            if nb in own_positions:
-                cell = terraform_by_pos.get(nb)
-                progress = cell.terraformation_progress if cell is not None else 0
-                if progress <= 45:
-                    hq_escape_neighbors += 1
+        hq_escape_positions = self._safe_hq_positions(state, own_positions, hq.position, terraform_by_pos)
+        hq_escape_neighbors = len(hq_escape_positions)
 
         for con in state.constructions:
+            if con.position in self._mountains:
+                continue
             own_neighbors = sum(1 for n in _adjacent(con.position) if n in own_positions)
             reach = self._reachable_authors_count(state, own_positions, con.position)
             score = 300 + con.progress * 12 + reach * 18 + own_neighbors * self.dense_bonus
             score += self._factory_target_shape(con.position, own_neighbors, own_positions, hq.position, center, beaver_positions)
             if _manhattan(con.position, hq.position) == 1 and hq_escape_neighbors < 2:
                 score += 220
+            elif _chebyshev(con.position, hq.position) <= 1:
+                score -= 800
+            elif _manhattan(con.position, hq.position) <= 2:
+                score -= 120
             cell = terraform_by_pos.get(con.position)
             if cell is not None and cell.terraformation_progress >= 100:
                 score += 120 - cell.turns_until_degradation * 4
@@ -1194,6 +1444,10 @@ class BenchmarkFactoryBot(_BenchmarkBase):
                 score += self._factory_target_shape(nb, own_neighbors, own_positions, hq.position, center, beaver_positions)
                 if _manhattan(nb, hq.position) == 1 and hq_escape_neighbors < 2:
                     score += 260
+                elif _chebyshev(nb, hq.position) <= 1:
+                    score -= 800
+                elif _manhattan(nb, hq.position) <= 2:
+                    score -= 120
                 cell = terraform_by_pos.get(nb)
                 if cell is not None and cell.terraformation_progress >= 100:
                     score += 160 - cell.turns_until_degradation * 6
@@ -1236,6 +1490,8 @@ class BenchmarkFactoryBot(_BenchmarkBase):
         own_positions: set[Position],
         state: GameState,
     ) -> Position | None:
+        if target in self._mountains:
+            return None
         if _chebyshev(author, target) <= state.action_range:
             return author
 
@@ -1322,31 +1578,73 @@ class BenchmarkFactoryBot(_BenchmarkBase):
     ) -> None:
         if len(state.plantations) < 2:
             return
+        max_hp = self._max_hp(state)
         hq_progress = terraform_by_pos.get(hq.position).terraformation_progress if hq.position in terraform_by_pos else 0
         hq_beaver_dist = self._nearest_beaver_distance(hq.position, state.beavers)
-        if hq_progress < 40 and hq.hp >= 18 and hq_beaver_dist > 2:
+        safe_positions = self._safe_hq_positions(state, own_positions, hq.position, terraform_by_pos)
+        must_move = hq_progress >= 55 or hq.hp <= max(15, int(max_hp * 0.35)) or hq_beaver_dist <= 2
+        if not must_move:
             return
 
         best_candidate: Position | None = None
         best_score = -1_000.0
-        for nb_pos in _adjacent(hq.position):
+        candidate_positions = safe_positions or [pos for pos in _adjacent(hq.position) if pos in own_positions]
+        for nb_pos in candidate_positions:
             nb = plant_by_pos.get(nb_pos)
-            if nb is None or nb.is_isolated:
+            if nb is None or nb.is_isolated or nb.position == hq.position:
                 continue
             progress = terraform_by_pos.get(nb_pos).terraformation_progress if nb_pos in terraform_by_pos else 0
+            if progress >= 60:
+                continue
             neighbor_count = sum(1 for n in _adjacent(nb_pos) if n in own_positions)
             score = 0.0
-            score += max(0, 70 - progress) * 4.5
+            score += max(0, 55 - progress) * 6.0
             score += neighbor_count * 20
             score += nb.hp * 1.5
             score += self._factory_mass(nb_pos, own_positions, terraform_by_pos) * 0.08
             score += self._nearest_beaver_distance(nb_pos, state.beavers) * 8
             if _is_reinforced(nb_pos):
                 score -= 35
-            if progress >= 85:
-                score -= 120
             if score > best_score:
                 best_score = score
                 best_candidate = nb_pos
         if best_candidate is not None:
             cmd.relocate_main(hq.position, best_candidate)
+
+    def _safe_hq_positions(
+        self,
+        state: GameState,
+        own_positions: set[Position],
+        hq_pos: Position,
+        terraform_by_pos: dict[Position, TerraformCell],
+    ) -> list[Position]:
+        max_hp = self._max_hp(state)
+        safe: list[tuple[float, Position]] = []
+        fallback: list[tuple[float, Position]] = []
+        plant_by_pos = {p.position: p for p in state.plantations}
+        for nb_pos in _adjacent(hq_pos):
+            if nb_pos not in own_positions:
+                continue
+            plant = plant_by_pos.get(nb_pos)
+            if plant is None or plant.is_isolated:
+                continue
+            progress = terraform_by_pos.get(nb_pos).terraformation_progress if nb_pos in terraform_by_pos else 0
+            beaver_dist = self._nearest_beaver_distance(nb_pos, state.beavers)
+            hp_ratio = plant.hp / max(1, max_hp)
+            score = (55 - progress) * 4 + beaver_dist * 10 + hp_ratio * 40
+            if progress <= 45 and beaver_dist >= 3 and hp_ratio >= 0.45:
+                safe.append((score, nb_pos))
+            elif progress <= 60 and hp_ratio >= 0.3:
+                fallback.append((score, nb_pos))
+        safe.sort(reverse=True)
+        fallback.sort(reverse=True)
+        return [pos for _, pos in safe] or [pos for _, pos in fallback]
+
+    def _max_hp(self, state: GameState) -> int:
+        max_hp = 50
+        if state.plantation_upgrades:
+            for tier in state.plantation_upgrades.tiers:
+                if tier.name == "max_hp":
+                    max_hp = 50 + tier.current * 10
+                    break
+        return max_hp

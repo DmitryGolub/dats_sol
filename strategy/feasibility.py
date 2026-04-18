@@ -34,6 +34,7 @@ BENCHMARK_BOTS = [
     "bench_million",
     "bench_blob",
     "bench_factory",
+    "bench_peak",
 ]
 
 
@@ -132,7 +133,7 @@ def _print_empirical(rows: list[dict]) -> None:
 
     print(
         f"{'bot':<16} {'mean':>10} {'best':>10} {'min':>10} "
-        f"{'max_p':>8} {'built':>8} {'cells':>8} {'kill':>10}"
+        f"{'max_p':>8} {'built':>8} {'cells':>8} {'t30':>6} {'lowHQ':>6} {'kill':>10}"
     )
     best_row: dict | None = None
     for bot, bot_rows in sorted(grouped.items()):
@@ -140,10 +141,12 @@ def _print_empirical(rows: list[dict]) -> None:
         max_plants = mean(r["max_plantations"] for r in bot_rows)
         built = mean(r["built_plantations"] for r in bot_rows)
         cells = mean(r["cells_terraformed"] for r in bot_rows)
+        turns_30 = mean(r.get("turns_ge_30", 0) for r in bot_rows)
+        low_hq = mean(r.get("turns_low_hq_escape", 0) for r in bot_rows)
         kills = mean(r["kill_score"] for r in bot_rows)
         print(
             f"{bot:<16} {mean(scores):>10.0f} {max(scores):>10.0f} {min(scores):>10.0f} "
-            f"{max_plants:>8.1f} {built:>8.1f} {cells:>8.1f} {kills:>10.0f}"
+            f"{max_plants:>8.1f} {built:>8.1f} {cells:>8.1f} {turns_30:>6.1f} {low_hq:>6.1f} {kills:>10.0f}"
         )
         bot_best = max(bot_rows, key=lambda row: row["score"])
         if best_row is None or bot_best["score"] > best_row["score"]:
@@ -155,11 +158,26 @@ def _print_empirical(rows: list[dict]) -> None:
         f"bot={best_row['bot']} seed={best_row['seed']} score={best_row['score']:.0f} "
         f"terraform={best_row['terraform_score']:.0f} kill={best_row['kill_score']:.0f} "
         f"max_plant={best_row['max_plantations']} built={best_row['built_plantations']} "
-        f"cells={best_row['cells_terraformed']} score_per_built={best_row['score_per_built']:.1f} "
+        f"cells={best_row['cells_terraformed']} t20={best_row.get('turns_ge_20', 0)} "
+        f"t30={best_row.get('turns_ge_30', 0)} t35={best_row.get('turns_ge_35', 0)} "
+        f"reloc={best_row.get('hq_relocations', 0)} low_hq={best_row.get('turns_low_hq_escape', 0)} "
+        f"score_per_built={best_row['score_per_built']:.1f} "
         f"score_per_visible_cell={best_row['score_per_visible_cell']:.1f} "
         f"losses=sabo:{best_row['sabotage_lost_plantations']},cata:{best_row['cataclysm_lost_plantations']},"
         f"lodge:{best_row['lodge_lost_plantations']},decay:{best_row['decay_lost_plantations']},"
         f"limit:{best_row['limit_lost_plantations']}"
+    )
+
+    worst_row = min(rows, key=lambda row: row["score"])
+    print("\n=== Worst Run Diagnostics ===")
+    print(
+        f"bot={worst_row['bot']} seed={worst_row['seed']} score={worst_row['score']:.0f} "
+        f"terraform={worst_row['terraform_score']:.0f} max_plant={worst_row['max_plantations']} "
+        f"built={worst_row['built_plantations']} cells={worst_row['cells_terraformed']} "
+        f"respawns={worst_row.get('respawns', 0)} reloc={worst_row.get('hq_relocations', 0)} "
+        f"low_hq={worst_row.get('turns_low_hq_escape', 0)} "
+        f"losses=lodge:{worst_row['lodge_lost_plantations']},decay:{worst_row['decay_lost_plantations']},"
+        f"limit:{worst_row['limit_lost_plantations']}"
     )
 
 

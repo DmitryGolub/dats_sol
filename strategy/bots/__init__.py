@@ -20,9 +20,11 @@ def get_all_bots() -> dict[str, type[BaseStrategy]]:
         BenchmarkFactoryBot,
         BenchmarkMillionBot,
         BenchmarkOverdriveBot,
+        BenchmarkPeakBot,
         BenchmarkReinforcedBot,
         BenchmarkStableBot,
     )
+    from strategy.bots.headful import HeadfulBot
     bots[CurrentBot.name] = CurrentBot
     bots[BenchmarkReinforcedBot.name] = BenchmarkReinforcedBot
     bots[BenchmarkStableBot.name] = BenchmarkStableBot
@@ -30,6 +32,8 @@ def get_all_bots() -> dict[str, type[BaseStrategy]]:
     bots[BenchmarkMillionBot.name] = BenchmarkMillionBot
     bots[BenchmarkBlobBot.name] = BenchmarkBlobBot
     bots[BenchmarkFactoryBot.name] = BenchmarkFactoryBot
+    bots[BenchmarkPeakBot.name] = BenchmarkPeakBot
+    bots[HeadfulBot.name] = HeadfulBot
 
     snapshots_dir = Path(__file__).parent / "snapshots"
     if snapshots_dir.exists():
