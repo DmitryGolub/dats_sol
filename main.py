@@ -12,10 +12,37 @@ import os
 import sys
 import time
 import argparse
+from pathlib import Path
 
 from api import GameAPI, Command, GameState
 from api.exceptions import GameAPIError, AuthenticationError, ValidationError, ServerError, TimeoutError
 from strategy import Strategy
+
+
+def load_dotenv(path: str | Path = ".env") -> None:
+    """Подхватить переменные из .env, не затирая уже выставленные в окружении.
+
+    Минималистичный парсер: KEY=VALUE, строки с # игнорируются, кавычки снимаются.
+    Держим без зависимости от python-dotenv, чтобы не раздувать pyproject.
+    """
+    p = Path(path)
+    if not p.is_file():
+        return
+    for raw in p.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 logging.basicConfig(
     level=logging.INFO,
@@ -114,11 +141,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="DatsSol Game Bot")
     parser.add_argument("--prod", action="store_true", help="Использовать production сервер")
     parser.add_argument("--data-dir", type=str, default="data", help="Директория для сохранения данных")
+    parser.add_argument("--env-file", type=str, default=".env", help="Путь к .env (по умолчанию ./.env)")
     args = parser.parse_args()
+
+    load_dotenv(args.env_file)
 
     token = os.environ.get("DATS_TOKEN") or os.environ.get("TOKEN")
     if not token:
-        log.error("Токен не найден. Установите переменную окружения DATS_TOKEN или TOKEN.")
+        log.error(
+            "Токен не найден. Укажите DATS_TOKEN в %s или переменной окружения.",
+            args.env_file,
+        )
         sys.exit(1)
 
     env = "prod" if args.prod else "test"
