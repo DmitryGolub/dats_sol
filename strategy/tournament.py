@@ -8,7 +8,12 @@ from datetime import datetime
 from pathlib import Path
 
 from strategy.bots import get_all_bots
-from strategy.runner import run_simulation, run_match
+from strategy.runner import (
+    DEFAULT_TEST_MAP_HEIGHT,
+    DEFAULT_TEST_MAP_WIDTH,
+    run_match,
+    run_simulation,
+)
 from strategy.core.rules import MAX_TURNS
 
 log = logging.getLogger("tournament")
@@ -33,12 +38,15 @@ CSV_FIELDS = [
 ]
 
 
+DEFAULT_TOURNAMENT_SEEDS = 4
+
+
 def run_tournament(
     bot_names: list[str] | None = None,
-    num_seeds: int = 10,
+    num_seeds: int = DEFAULT_TOURNAMENT_SEEDS,
     turns: int = MAX_TURNS,
-    width: int = 80,
-    height: int = 80,
+    width: int = DEFAULT_TEST_MAP_WIDTH,
+    height: int = DEFAULT_TEST_MAP_HEIGHT,
     versus: bool = False,
 ) -> list[dict]:
     all_bots = get_all_bots()
@@ -203,10 +211,10 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Турнир ботов DatsSol")
     parser.add_argument("--bots", type=str, default="", help="Имена ботов через запятую (пусто = все)")
-    parser.add_argument("--seeds", type=int, default=10)
+    parser.add_argument("--seeds", type=int, default=DEFAULT_TOURNAMENT_SEEDS)
     parser.add_argument("--turns", type=int, default=MAX_TURNS)
-    parser.add_argument("--width", type=int, default=80)
-    parser.add_argument("--height", type=int, default=80)
+    parser.add_argument("--width", type=int, default=DEFAULT_TEST_MAP_WIDTH)
+    parser.add_argument("--height", type=int, default=DEFAULT_TEST_MAP_HEIGHT)
     parser.add_argument("--versus", action="store_true", help="Мультиплеер: все боты на одной карте")
     args = parser.parse_args()
 

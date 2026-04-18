@@ -5,6 +5,7 @@ from collections import defaultdict
 from api.models import Command, PlantationAction, Position
 from .state import (
     BUILD_THRESHOLD,
+    BEAVER_LODGE_REWARD_MULTIPLIER,
     CELL_DEGRADE_DELAY,
     CELL_DEGRADE_SPEED,
     DEFAULT_AR,
@@ -343,7 +344,7 @@ def _phase_player_attack_lodges(world: WorldState, classified: dict[str, dict[st
     for lid in dead_lodges:
         lodge = world.beaver_lodges[lid]
         if lodge.damage_by:
-            reward = 10 * cell_max_points(lodge.position)
+            reward = BEAVER_LODGE_REWARD_MULTIPLIER * cell_max_points(lodge.position)
             max_dmg = max(lodge.damage_by.values())
             winners = [pid for pid, dmg in lodge.damage_by.items() if dmg == max_dmg]
             share = reward / len(winners)
