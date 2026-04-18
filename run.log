@@ -1,71 +1,92 @@
-22:29:38 [INFO] Соло-турнир: 3 ботов × 20 сидов = 60 партий
-22:29:38 [INFO] [1/60] current seed=1
-22:29:39 [INFO] [2/60] current seed=2
-22:29:39 [INFO] [3/60] current seed=3
-22:29:39 [INFO] [4/60] current seed=4
-22:29:39 [INFO] [5/60] current seed=5
-22:29:39 [INFO] [6/60] current seed=6
-22:29:39 [INFO] [7/60] current seed=7
-22:29:39 [INFO] [8/60] current seed=8
-22:29:39 [INFO] [9/60] current seed=9
-22:29:39 [INFO] [10/60] current seed=10
-22:29:40 [INFO] [11/60] current seed=11
-22:29:40 [INFO] [12/60] current seed=12
-22:29:40 [INFO] [13/60] current seed=13
-22:29:40 [INFO] [14/60] current seed=14
-22:29:40 [INFO] [15/60] current seed=15
-22:29:40 [INFO] [16/60] current seed=16
-22:29:40 [INFO] [17/60] current seed=17
-22:29:41 [INFO] [18/60] current seed=18
-22:29:41 [INFO] [19/60] current seed=19
-22:29:41 [INFO] [20/60] current seed=20
-22:29:41 [INFO] [21/60] v001 seed=1
-22:29:41 [INFO] [22/60] v001 seed=2
-22:29:41 [INFO] [23/60] v001 seed=3
-22:29:41 [INFO] [24/60] v001 seed=4
-22:29:41 [INFO] [25/60] v001 seed=5
-22:29:42 [INFO] [26/60] v001 seed=6
-22:29:42 [INFO] [27/60] v001 seed=7
-22:29:42 [INFO] [28/60] v001 seed=8
-22:29:42 [INFO] [29/60] v001 seed=9
-22:29:42 [INFO] [30/60] v001 seed=10
-22:29:42 [INFO] [31/60] v001 seed=11
-22:29:42 [INFO] [32/60] v001 seed=12
-22:29:42 [INFO] [33/60] v001 seed=13
-22:29:42 [INFO] [34/60] v001 seed=14
-22:29:42 [INFO] [35/60] v001 seed=15
-22:29:42 [INFO] [36/60] v001 seed=16
-22:29:42 [INFO] [37/60] v001 seed=17
-22:29:43 [INFO] [38/60] v001 seed=18
-22:29:43 [INFO] [39/60] v001 seed=19
-22:29:43 [INFO] [40/60] v001 seed=20
-22:29:43 [INFO] [41/60] v002 seed=1
-22:29:43 [INFO] [42/60] v002 seed=2
-22:29:43 [INFO] [43/60] v002 seed=3
-22:29:43 [INFO] [44/60] v002 seed=4
-22:29:43 [INFO] [45/60] v002 seed=5
-22:29:43 [INFO] [46/60] v002 seed=6
-22:29:43 [INFO] [47/60] v002 seed=7
-22:29:44 [INFO] [48/60] v002 seed=8
-22:29:44 [INFO] [49/60] v002 seed=9
-22:29:44 [INFO] [50/60] v002 seed=10
-22:29:44 [INFO] [51/60] v002 seed=11
-22:29:44 [INFO] [52/60] v002 seed=12
-22:29:44 [INFO] [53/60] v002 seed=13
-22:29:44 [INFO] [54/60] v002 seed=14
-22:29:44 [INFO] [55/60] v002 seed=15
-22:29:44 [INFO] [56/60] v002 seed=16
-22:29:45 [INFO] [57/60] v002 seed=17
-22:29:45 [INFO] [58/60] v002 seed=18
-22:29:45 [INFO] [59/60] v002 seed=19
-22:29:45 [INFO] [60/60] v002 seed=20
-22:29:45 [INFO] Результаты сохранены в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/runs.csv
-22:29:45 [INFO] Матрица сохранена в /Users/dmitrygolub/projects/dats_sol/strategy/experiments/tournament_matrix.csv
+10:27:10 [INFO] Соло-турнир: 4 ботов × 20 сидов = 80 партий
+10:27:10 [INFO] [1/80] current seed=1
+10:27:11 [INFO] [2/80] current seed=2
+10:27:12 [INFO] [3/80] current seed=3
+10:27:13 [INFO] [4/80] current seed=4
+10:27:14 [INFO] [5/80] current seed=5
+10:27:14 [INFO] [6/80] current seed=6
+10:27:14 [INFO] [7/80] current seed=7
+10:27:15 [INFO] [8/80] current seed=8
+10:27:15 [INFO] [9/80] current seed=9
+10:27:16 [INFO] [10/80] current seed=10
+10:27:16 [INFO] [11/80] current seed=11
+10:27:17 [INFO] [12/80] current seed=12
+10:27:18 [INFO] [13/80] current seed=13
+10:27:19 [INFO] [14/80] current seed=14
+10:27:20 [INFO] [15/80] current seed=15
+10:27:20 [INFO] [16/80] current seed=16
+10:27:21 [INFO] [17/80] current seed=17
+10:27:22 [INFO] [18/80] current seed=18
+10:27:22 [INFO] [19/80] current seed=19
+10:27:22 [INFO] [20/80] current seed=20
+10:27:24 [INFO] [21/80] v001 seed=1
+10:27:24 [INFO] [22/80] v001 seed=2
+10:27:25 [INFO] [23/80] v001 seed=3
+10:27:26 [INFO] [24/80] v001 seed=4
+10:27:27 [INFO] [25/80] v001 seed=5
+10:27:27 [INFO] [26/80] v001 seed=6
+10:27:27 [INFO] [27/80] v001 seed=7
+10:27:28 [INFO] [28/80] v001 seed=8
+10:27:28 [INFO] [29/80] v001 seed=9
+10:27:28 [INFO] [30/80] v001 seed=10
+10:27:29 [INFO] [31/80] v001 seed=11
+10:27:30 [INFO] [32/80] v001 seed=12
+10:27:30 [INFO] [33/80] v001 seed=13
+10:27:31 [INFO] [34/80] v001 seed=14
+10:27:31 [INFO] [35/80] v001 seed=15
+10:27:31 [INFO] [36/80] v001 seed=16
+10:27:32 [INFO] [37/80] v001 seed=17
+10:27:32 [INFO] [38/80] v001 seed=18
+10:27:32 [INFO] [39/80] v001 seed=19
+10:27:33 [INFO] [40/80] v001 seed=20
+10:27:33 [INFO] [41/80] v002 seed=1
+10:27:34 [INFO] [42/80] v002 seed=2
+10:27:34 [INFO] [43/80] v002 seed=3
+10:27:35 [INFO] [44/80] v002 seed=4
+10:27:36 [INFO] [45/80] v002 seed=5
+10:27:37 [INFO] [46/80] v002 seed=6
+10:27:37 [INFO] [47/80] v002 seed=7
+10:27:37 [INFO] [48/80] v002 seed=8
+10:27:38 [INFO] [49/80] v002 seed=9
+10:27:39 [INFO] [50/80] v002 seed=10
+10:27:39 [INFO] [51/80] v002 seed=11
+10:27:40 [INFO] [52/80] v002 seed=12
+10:27:40 [INFO] [53/80] v002 seed=13
+10:27:41 [INFO] [54/80] v002 seed=14
+10:27:41 [INFO] [55/80] v002 seed=15
+10:27:41 [INFO] [56/80] v002 seed=16
+10:27:42 [INFO] [57/80] v002 seed=17
+10:27:42 [INFO] [58/80] v002 seed=18
+10:27:43 [INFO] [59/80] v002 seed=19
+10:27:43 [INFO] [60/80] v002 seed=20
+10:27:44 [INFO] [61/80] v003 seed=1
+10:27:45 [INFO] [62/80] v003 seed=2
+10:27:45 [INFO] [63/80] v003 seed=3
+10:27:46 [INFO] [64/80] v003 seed=4
+10:27:47 [INFO] [65/80] v003 seed=5
+10:27:47 [INFO] [66/80] v003 seed=6
+10:27:47 [INFO] [67/80] v003 seed=7
+10:27:47 [INFO] [68/80] v003 seed=8
+10:27:48 [INFO] [69/80] v003 seed=9
+10:27:48 [INFO] [70/80] v003 seed=10
+10:27:48 [INFO] [71/80] v003 seed=11
+10:27:49 [INFO] [72/80] v003 seed=12
+10:27:50 [INFO] [73/80] v003 seed=13
+10:27:50 [INFO] [74/80] v003 seed=14
+10:27:51 [INFO] [75/80] v003 seed=15
+10:27:51 [INFO] [76/80] v003 seed=16
+10:27:52 [INFO] [77/80] v003 seed=17
+10:27:52 [INFO] [78/80] v003 seed=18
+10:27:52 [INFO] [79/80] v003 seed=19
+10:27:53 [INFO] [80/80] v003 seed=20
+10:27:54 [INFO] Результаты сохранены в /home/kotki/Coding/dats_sol/strategy/experiments/runs.csv
+10:27:54 [INFO] Матрица сохранена в /home/kotki/Coding/dats_sol/strategy/experiments/tournament_matrix.csv
 
 ======================================================================
 Бот                    Ср. очки      Мин     Макс  Пл.макс    Win%
 ----------------------------------------------------------------------
-current                   85002      735   136257     29.1   35.0%
-v001                      90170      735   185900     25.1   45.0%
-v002                      88215      735   134983     28.5   20.0%
+current                  105556      735   177842     31.1   45.0%
+v001                      90170      735   185900     25.1   20.0%
+v002                      88215      735   134983     28.5   25.0%
+v003                      96548      735   167976     28.0   10.0%
 ======================================================================

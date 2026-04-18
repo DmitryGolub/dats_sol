@@ -1,0 +1,33 @@
+10:28:29 [INFO] Versus-турнир: 4 ботов × 20 сидов = 20 матчей
+10:28:29 [INFO] [1/20] seed=1: current vs v001 vs v002 vs v003
+10:28:30 [INFO] [2/20] seed=2: current vs v001 vs v002 vs v003
+10:28:32 [INFO] [3/20] seed=3: current vs v001 vs v002 vs v003
+10:28:33 [INFO] [4/20] seed=4: current vs v001 vs v002 vs v003
+10:28:34 [INFO] [5/20] seed=5: current vs v001 vs v002 vs v003
+10:28:36 [INFO] [6/20] seed=6: current vs v001 vs v002 vs v003
+10:28:37 [INFO] [7/20] seed=7: current vs v001 vs v002 vs v003
+10:28:38 [INFO] [8/20] seed=8: current vs v001 vs v002 vs v003
+10:28:40 [INFO] [9/20] seed=9: current vs v001 vs v002 vs v003
+10:28:41 [INFO] [10/20] seed=10: current vs v001 vs v002 vs v003
+10:28:43 [INFO] [11/20] seed=11: current vs v001 vs v002 vs v003
+10:28:44 [INFO] [12/20] seed=12: current vs v001 vs v002 vs v003
+10:28:46 [INFO] [13/20] seed=13: current vs v001 vs v002 vs v003
+10:28:48 [INFO] [14/20] seed=14: current vs v001 vs v002 vs v003
+10:28:49 [INFO] [15/20] seed=15: current vs v001 vs v002 vs v003
+10:28:50 [INFO] [16/20] seed=16: current vs v001 vs v002 vs v003
+10:28:51 [INFO] [17/20] seed=17: current vs v001 vs v002 vs v003
+10:28:52 [INFO] [18/20] seed=18: current vs v001 vs v002 vs v003
+10:28:53 [INFO] [19/20] seed=19: current vs v001 vs v002 vs v003
+10:28:55 [INFO] [20/20] seed=20: current vs v001 vs v002 vs v003
+10:28:57 [INFO] Результаты сохранены в /home/kotki/Coding/dats_sol/strategy/experiments/runs.csv
+10:28:57 [INFO] Матрица сохранена в /home/kotki/Coding/dats_sol/strategy/experiments/tournament_matrix.csv
+
+======================================================================
+Бот                    Ср. очки      Мин     Макс  Пл.макс    Win%
+----------------------------------------------------------------------
+current                   78195     1722   146986     29.9   20.0%
+v001                      62432      899   110353     24.4    5.0%
+v002                      73247    43427   122629     29.6   30.0%
+v003                      90164    53194   147708     33.3   45.0%
+======================================================================
+Победитель: v003
