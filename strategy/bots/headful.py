@@ -1,12 +1,21 @@
-"""HeadfulBot — FactoryBot base + layered stateful HQ planning."""
+"""HeadfulBot — FactoryBot engine + Caterpillar HQ policy.
+
+Build/repair uses proven FactoryBot logic, but:
+- HQ relocates aggressively like a caterpillar head
+- Build targets get vector-boost toward movement direction
+- Tail repairs are suppressed to save resources for head
+- Death/lodge memory steers colony away from danger
+"""
 from __future__ import annotations
+
+from collections import defaultdict
 
 from api.models import Command, GameState, Position
 from strategy.bots.benchmarks import BenchmarkFactoryBot
 from strategy.brain.spatial import InfluenceMap
 from strategy.brain.temporal import HorizonPredictor
 from strategy.brain.strategic import StateMachine
-from strategy.brain.utils import adjacent, chebyshev
+from strategy.brain.utils import adjacent, chebyshev, is_reinforced
 
 
 class HeadfulBot(BenchmarkFactoryBot):
@@ -21,22 +30,22 @@ class HeadfulBot(BenchmarkFactoryBot):
         self._spatial = InfluenceMap(0, 0)
         self._strategic = StateMachine()
         self._temporal = HorizonPredictor()
-        self._head_plan: list[Position] = []
         self._known_lodges: set[Position] = set()
         self._last_plant_positions: set[Position] = set()
         self._death_positions: list[Position] = []
-        self._bridge_plan: list[Position] = []
-        self._cluster_seeds: list[Position] = []
+        self._relocate_cooldown: int = 0
 
     def reset(self) -> None:
         super().reset()
-        self._head_plan.clear()
         self._known_lodges.clear()
         self._last_plant_positions.clear()
         self._death_positions.clear()
-        self._bridge_plan.clear()
-        self._cluster_seeds.clear()
+        self._relocate_cooldown = 0
         self._spatial = InfluenceMap(0, 0)
+
+    def _init(self, state: GameState) -> None:
+        super()._init(state)
+        self._spatial = InfluenceMap(state.map_size[0], state.map_size[1])
 
     def _apply_upgrade(self, state: GameState, cmd: Command) -> None:
         upgrades = state.plantation_upgrades
@@ -52,7 +61,6 @@ class HeadfulBot(BenchmarkFactoryBot):
                 cmd.upgrade_plantation(name)
                 return
 
-        # Settlement limit earlier than factory default
         if plant_count >= limit - 6 or state.turn_no >= 160:
             tier = tier_map.get("settlement_limit")
             if tier and tier.current < tier.max:
@@ -80,14 +88,11 @@ class HeadfulBot(BenchmarkFactoryBot):
         plant_by_pos = {p.position: p for p in state.plantations}
         terraform_by_pos = {cell.position: cell for cell in state.terraformed_cells}
 
-        # 1. Upgrade (factory logic)
+        # 1. Upgrade
         self._apply_upgrade(state, cmd)
 
-        # 2. Update spatial and temporal
-        self._spatial.update(state)
-        predictions = self._temporal.predict(state)
-
-        # 2.5 Remember visible lodges and plant deaths
+        # 2. Update awareness
+        # self._spatial.update(state)  # disabled: not used by caterpillar logic, very expensive
         for beaver in state.beavers:
             self._known_lodges.add(beaver.position)
         current_plants = {p.position for p in state.plantations}
@@ -96,290 +101,242 @@ class HeadfulBot(BenchmarkFactoryBot):
                 self._death_positions.append(pos)
         self._last_plant_positions = current_plants
 
-        # 3. Strategic phase evaluation
-        phase, weights = self._strategic.evaluate(state, predictions, own_positions, hq)
+        # 3. Movement vector
+        vec_x, vec_y = self._movement_vector(state, own_positions, hq)
 
-        # 4. Update head plan (HQ succession)
-        self._update_head_plan(state, own_positions, hq)
-
-        # 4.5 Update bridge / cluster plan
-        self._update_bridge_plan(state, own_positions)
-
-        # 5. Repair (factory logic)
+        # 4. Repair (factory base, but suppress tail repairs)
         assigned: set[Position] = set()
-        self._assign_repairs_factory(state, cmd, assigned, own_positions, hq, terraform_by_pos)
+        self._assign_repairs_caterpillar(state, cmd, assigned, own_positions, hq, terraform_by_pos, vec_x, vec_y)
 
-        # 6. Lodge attack — aggressive, does not require one-shot kill
-        self._assign_lodge_attacks_headful(state, cmd, assigned, own_positions, hq)
+        # 5. Lodge attacks
+        self._assign_lodge_attacks(state, cmd, assigned, own_positions, hq)
 
-        # 7. Build — use factory base, but with head-aware target injection
-        self._assign_builds_headful(state, cmd, assigned, own_positions, hq, terraform_by_pos, phase, weights)
+        # 6. Build (factory base + vector boost + death penalty)
+        self._assign_builds_caterpillar(state, cmd, assigned, own_positions, hq, terraform_by_pos, vec_x, vec_y)
 
-        # 8. HQ relocation — factory base + proactive head-based relocate
-        self._maybe_relocate_hq_headful(state, cmd, own_positions, plant_by_pos, hq, terraform_by_pos, predictions)
+        # 7. Leapfrog HQ relocate
+        self._maybe_relocate_hq_caterpillar(state, cmd, own_positions, plant_by_pos, hq, terraform_by_pos, vec_x, vec_y)
+
+        if self._relocate_cooldown > 0:
+            self._relocate_cooldown -= 1
 
         return cmd
 
-    def _update_head_plan(
+    # ------------------------------------------------------------------
+    #  Movement Vector
+    # ------------------------------------------------------------------
+    def _movement_vector(
         self,
         state: GameState,
         own_positions: set[Position],
-        hq: object,
-    ) -> None:
-        if hq is None:
-            self._head_plan.clear()
-            return
-        current_hq = hq.position
-        if self._head_plan and self._head_plan[0] == current_hq:
-            pass
-        else:
-            self._head_plan = [current_hq]
-        if len(self._head_plan) < 3:
-            self._extend_head_plan(state, own_positions, self._head_plan)
+        hq,
+    ) -> tuple[float, float]:
+        hq_pos = hq.position
+        vec_x, vec_y = 0.0, 0.0
 
-    def _extend_head_plan(
+        # Pull: nearest unreached reinforced
+        best_reinf = None
+        best_dist = 999
+        for x in range(0, self._map_size[0], 7):
+            for y in range(0, self._map_size[1], 7):
+                pos = (x, y)
+                if pos in own_positions or pos in self._mountains:
+                    continue
+                d = chebyshev(hq_pos, pos)
+                if d < best_dist:
+                    best_dist = d
+                    best_reinf = pos
+        if best_reinf:
+            vec_x += (best_reinf[0] - hq_pos[0]) * 2.0
+            vec_y += (best_reinf[1] - hq_pos[1]) * 2.0
+
+        # Push: away from death cluster
+        recent = self._death_positions[-20:]
+        if len(recent) >= 2:
+            cx = sum(p[0] for p in recent) // len(recent)
+            cy = sum(p[1] for p in recent) // len(recent)
+            vec_x += (hq_pos[0] - cx) * 1.5
+            vec_y += (hq_pos[1] - cy) * 1.5
+
+        # Push: away from known lodges
+        for lodge_pos in self._known_lodges:
+            dx = hq_pos[0] - lodge_pos[0]
+            dy = hq_pos[1] - lodge_pos[1]
+            dist = max(1, chebyshev(hq_pos, lodge_pos))
+            vec_x += dx / dist * 3.0
+            vec_y += dy / dist * 3.0
+
+        mag = (vec_x * vec_x + vec_y * vec_y) ** 0.5
+        if mag > 0:
+            vec_x /= mag
+            vec_y /= mag
+        return vec_x, vec_y
+
+    def _dot_with_vector(self, pos: Position, ref: Position, vec_x: float, vec_y: float) -> float:
+        return (pos[0] - ref[0]) * vec_x + (pos[1] - ref[1]) * vec_y
+
+    # ------------------------------------------------------------------
+    #  Caterpillar Repair (suppress tail, save resources for head)
+    # ------------------------------------------------------------------
+    def _assign_repairs_caterpillar(
         self,
         state: GameState,
+        cmd: Command,
+        assigned: set[Position],
         own_positions: set[Position],
-        plan: list[Position],
+        hq,
+        terraform_by_pos: dict[Position, object],
+        vec_x: float,
+        vec_y: float,
     ) -> None:
-        terraform_by_pos = {c.position: c for c in state.terraformed_cells}
-        plant_by_pos = {p.position: p for p in state.plantations}
         max_hp = 50
         if state.plantation_upgrades:
             for tier in state.plantation_upgrades.tiers:
                 if tier.name == "max_hp":
                     max_hp = 50 + tier.current * 10
                     break
-        last = plan[-1]
-        visited = set(plan)
-        queue = [last]
-        while queue and len(plan) < 5:
-            current = queue.pop(0)
-            candidates: list[tuple[float, Position]] = []
-            for nb in adjacent(current):
-                if nb in visited or nb not in own_positions:
-                    continue
-                plant = plant_by_pos.get(nb)
-                if plant is None or plant.is_isolated:
-                    continue
-                cell = terraform_by_pos.get(nb)
-                progress = cell.terraformation_progress if cell else 0
-                if progress >= 40:
-                    continue
-                beaver_dist = self._nearest_beaver_distance(nb, state.beavers)
-                if beaver_dist <= 2:
-                    continue
-                neighbor_count = sum(1 for n in adjacent(nb) if n in own_positions)
-                hp_ratio = plant.hp / max(1, max_hp)
-                score = (40 - progress) * 5 + neighbor_count * 15 + hp_ratio * 30 + beaver_dist * 8
-                candidates.append((score, nb))
-            candidates.sort(reverse=True)
-            for score, pos in candidates[:1]:
-                plan.append(pos)
-                visited.add(pos)
-                queue.append(pos)
-                break
-            if not candidates:
-                break
 
-    def _update_bridge_plan(
+        for plant in state.plantations:
+            if plant.position in assigned or plant.is_isolated:
+                continue
+
+            # HQ — always repair
+            if plant.is_main:
+                if plant.hp < max_hp * 0.5:
+                    self._commit_repair(plant.position, state, cmd, assigned, own_positions)
+                continue
+
+            cell = terraform_by_pos.get(plant.position)
+            progress = cell.terraformation_progress if cell else 0
+            dot = self._dot_with_vector(plant.position, hq.position, vec_x, vec_y)
+
+            # Tail: far behind AND high progress — let it die unless critical bridge
+            is_tail = (dot < -3) and (progress > 70)
+            if is_tail:
+                if not self._is_critical(plant.position, own_positions, hq.position):
+                    continue
+                if plant.hp >= max_hp * 0.2:
+                    continue
+
+            # Normal repair
+            threshold = 0.40
+            if self._is_critical(plant.position, own_positions, hq.position):
+                threshold = 0.60
+
+            if plant.hp < max_hp * threshold:
+                self._commit_repair(plant.position, state, cmd, assigned, own_positions)
+
+    def _commit_repair(
         self,
+        target: Position,
         state: GameState,
+        cmd: Command,
+        assigned: set[Position],
         own_positions: set[Position],
     ) -> None:
-        """Plan a bridge to a distant high-value seed to create satellite clusters."""
-        # Clean up completed bridge cells
-        self._bridge_plan = [p for p in self._bridge_plan if p not in own_positions]
-        self._cluster_seeds = [p for p in self._cluster_seeds if p not in own_positions]
+        best = None
+        best_exit = None
+        best_dist = 999
+        for plant in state.plantations:
+            if plant.position in assigned or plant.is_isolated or plant.position == target:
+                continue
+            exit_point = self._best_factory_exit(plant.position, target, own_positions, state)
+            if exit_point is None:
+                continue
+            dist = chebyshev(exit_point, target)
+            if dist < best_dist:
+                best = plant.position
+                best_exit = exit_point
+                best_dist = dist
+        if best is not None:
+            assigned.add(best)
+            if best_exit == best:
+                cmd.repair(best, target)
+            else:
+                cmd.repair_via(best, best_exit, target)
 
-        # Only plan new bridge if we have enough plants and no active bridge
-        plant_count = len(state.plantations)
-        if self._bridge_plan or plant_count < 8:
-            return
-        if state.turn_no < 50 or state.turn_no % 80 != 0:
-            return
-
-        # Find best distant seed (reinforced or high value, away from lodges)
-        best_seed = None
-        best_score = -1.0
-        for x in range(0, self._map_size[0], 3):
-            for y in range(0, self._map_size[1], 3):
-                pos = (x, y)
-                if pos in own_positions or pos in self._mountains:
-                    continue
-                dist_to_cluster = min(chebyshev(pos, op) for op in own_positions)
-                if dist_to_cluster < 5 or dist_to_cluster > 14:
-                    continue
-                score = self._spatial.value_heatmap.get(pos, 0.0)
-                # Strongly prefer reinforced
-                if chebyshev(pos, (pos[0] // 7 * 7, pos[1] // 7 * 7)) == 0:
-                    score += 300.0
-                # Penalize proximity to known lodges
-                for lodge_pos in self._known_lodges:
-                    if chebyshev(pos, lodge_pos) <= 5:
-                        score -= 300.0
-                if score > best_score:
-                    best_score = score
-                    best_seed = pos
-
-        if best_seed is None:
-            return
-
-        # Find nearest own plant and plan first step towards seed
-        nearest = min(own_positions, key=lambda op: chebyshev(op, best_seed))
-        # Greedy step towards seed
-        dx = 0
-        dy = 0
-        if best_seed[0] > nearest[0]:
-            dx = 1
-        elif best_seed[0] < nearest[0]:
-            dx = -1
-        if best_seed[1] > nearest[1]:
-            dy = 1
-        elif best_seed[1] < nearest[1]:
-            dy = -1
-
-        step = (nearest[0] + dx, nearest[1] + dy)
-        if step in own_positions or step in self._mountains:
-            # try orthogonal alternatives
-            alt_steps = [
-                (nearest[0] + dx, nearest[1]),
-                (nearest[0], nearest[1] + dy),
-                (nearest[0] - dx, nearest[1] + dy),
-                (nearest[0] + dx, nearest[1] - dy),
-            ]
-            for alt in alt_steps:
-                if alt not in own_positions and alt not in self._mountains:
-                    if 0 <= alt[0] < self._map_size[0] and 0 <= alt[1] < self._map_size[1]:
-                        step = alt
-                        break
-
-        if step not in own_positions and step not in self._mountains:
-            self._bridge_plan = [step, best_seed]
-            self._cluster_seeds.append(best_seed)
-
-    def _assign_builds_headful(
+    # ------------------------------------------------------------------
+    #  Caterpillar Build (factory engine + vector boost + penalties)
+    # ------------------------------------------------------------------
+    def _assign_builds_caterpillar(
         self,
         state: GameState,
         cmd: Command,
         assigned: set[Position],
         own_positions: set[Position],
-        hq: object,
+        hq,
         terraform_by_pos: dict[Position, object],
-        phase: str,
-        weights,
+        vec_x: float,
+        vec_y: float,
     ) -> None:
-        """Wrap factory build assignment with head-aware priority injection."""
-        # If STABILIZE dominates, we may need to override build priorities
-        # to focus on HQ escape and head grooming.
-        head_boost: dict[Position, float] = {}
-        if phase == "stabilize":
-            for pos in self._head_plan[1:3]:
-                for nb in adjacent(pos):
-                    if nb not in own_positions and nb not in self._mountains:
-                        head_boost[nb] = head_boost.get(nb, 0.0) + 300.0
-            # Boost escape cells around current HQ
-            for nb in adjacent(hq.position):
-                if nb not in own_positions and nb not in self._mountains:
-                    head_boost[nb] = head_boost.get(nb, 0.0) + 220.0
-
-        # Penalty for building near known lodges
-        lodge_penalty: dict[Position, float] = {}
-        for lodge_pos in self._known_lodges:
-            for dx in range(-3, 4):
-                for dy in range(-3, 4):
-                    pos = (lodge_pos[0] + dx, lodge_pos[1] + dy)
-                    dist = chebyshev(pos, lodge_pos)
-                    if dist <= 2:
-                        lodge_penalty[pos] = lodge_penalty.get(pos, 0.0) - 250.0
-                    elif dist <= 4:
-                        lodge_penalty[pos] = lodge_penalty.get(pos, 0.0) - 80.0
-
-        # Penalty for building towards death cluster (extrapolated lodge direction)
-        death_penalty: dict[Position, float] = {}
-        recent_deaths = self._death_positions[-30:]
-        if len(recent_deaths) >= 3:
-            death_center = (
-                sum(p[0] for p in recent_deaths) // len(recent_deaths),
-                sum(p[1] for p in recent_deaths) // len(recent_deaths),
-            )
-            # Vector from HQ to death center
-            vec_x = death_center[0] - hq.position[0]
-            vec_y = death_center[1] - hq.position[1]
-            for pos in own_positions:
-                for dx in range(-3, 4):
-                    for dy in range(-3, 4):
-                        nb = (pos[0] + dx, pos[1] + dy)
-                        if nb in own_positions or nb in self._mountains:
-                            continue
-                        # Dot product with death vector
-                        d_x = nb[0] - hq.position[0]
-                        d_y = nb[1] - hq.position[1]
-                        # If target is in same quadrant as death center, penalize
-                        if (vec_x >= 0 and d_x >= 0 or vec_x < 0 and d_x < 0) and (vec_y >= 0 and d_y >= 0 or vec_y < 0 and d_y < 0):
-                            dist_to_death = chebyshev(nb, death_center)
-                            if dist_to_death <= 6:
-                                death_penalty[nb] = death_penalty.get(nb, 0.0) - 120.0
-                            elif dist_to_death <= 10:
-                                death_penalty[nb] = death_penalty.get(nb, 0.0) - 40.0
-
-        # Merge boosts
-        combined_boost: dict[Position, float] = {}
-        for pos, val in head_boost.items():
-            combined_boost[pos] = combined_boost.get(pos, 0.0) + val
-        for pos, val in lodge_penalty.items():
-            combined_boost[pos] = combined_boost.get(pos, 0.0) + val
-        for pos, val in death_penalty.items():
-            combined_boost[pos] = combined_boost.get(pos, 0.0) + val
-
-        # Call factory build logic with injected boost
-        self._assign_builds_factory_with_boost(
-            state, cmd, assigned, own_positions, hq, terraform_by_pos, combined_boost
-        )
-
-    def _assign_builds_factory_with_boost(
-        self,
-        state: GameState,
-        cmd: Command,
-        assigned: set[Position],
-        own_positions: set[Position],
-        hq: object,
-        terraform_by_pos: dict[Position, object],
-        head_boost: dict[Position, float],
-    ) -> None:
-        """Modified factory build logic that applies head_boost to target scores."""
         available = [p for p in state.plantations if p.position not in assigned and not p.is_isolated]
         if not available:
             return
 
-        from collections import defaultdict
         construction_by_pos = {c.position: c for c in state.constructions}
         targets = self._factory_targets(state, own_positions, hq, terraform_by_pos)
 
-        # Apply head boost
-        boosted_targets = []
+        # Apply caterpillar boosts / penalties
+        safe_neighbors = self._count_safe_hq_neighbors(hq, own_positions, state)
+        boosted = []
         for pos, score in targets:
-            boosted_targets.append((pos, score + head_boost.get(pos, 0.0)))
-        boosted_targets.sort(key=lambda item: -item[1])
+            dot = self._dot_with_vector(pos, hq.position, vec_x, vec_y)
+            dist_hq = chebyshev(pos, hq.position)
+
+            # Head direction bonus
+            if dot > 0:
+                score += 180.0 + dot * 25.0
+            elif dot < -3:
+                score -= 120.0
+
+            # HQ escape
+            if dist_hq <= 1:
+                if safe_neighbors < 2:
+                    score += 350.0
+                else:
+                    score += 150.0
+            elif dist_hq == 2:
+                score += 60.0
+
+            # Death cluster penalty
+            recent = self._death_positions[-20:]
+            if len(recent) >= 2:
+                death_center = (
+                    sum(p[0] for p in recent) // len(recent),
+                    sum(p[1] for p in recent) // len(recent),
+                )
+                if chebyshev(pos, death_center) <= 6:
+                    score -= 80.0
+
+            # Lodge penalty
+            for lodge_pos in self._known_lodges:
+                ld = chebyshev(pos, lodge_pos)
+                if ld <= 2:
+                    score -= 300.0
+                elif ld <= 4:
+                    score -= 80.0
+
+            boosted.append((pos, score))
+
+        boosted.sort(key=lambda item: -item[1])
 
         used_exits: dict[Position, int] = defaultdict(int)
         limit = self._plantation_limit(state)
         current_count = len(state.plantations)
-        overbuild_allowance = 4 if state.turn_no < 120 else 5 if state.turn_no < 280 else 3
-        immediate_budget = max(1, limit + overbuild_allowance - current_count)
-        pipeline_cap = max(12, current_count * 2 + 4) if current_count < 10 else max(10, current_count // 2 + 10)
+        overbuild = 4 if state.turn_no < 120 else 5 if state.turn_no < 280 else 3
+        immediate_budget = max(1, limit + overbuild - current_count)
         staged_count = len(state.constructions)
         births_committed = 0
         early_spread = state.turn_no < 70 and current_count < 6
 
-        for target_pos, priority in boosted_targets:
+        for target_pos, priority in boosted:
             if not available:
                 break
             if target_pos in self._mountains:
                 continue
             progress = construction_by_pos.get(target_pos).progress if target_pos in construction_by_pos else 0
             required = max(0, 50 - progress)
+
             candidates: list[tuple[float, Position, Position, int]] = []
             for plant in available:
                 exit_point = self._best_factory_exit(plant.position, target_pos, own_positions, state)
@@ -408,7 +365,7 @@ class HeadfulBot(BenchmarkFactoryBot):
                     committed.append((author, exit_point, eff))
                     used_exits[exit_point] += 1
                 if committed:
-                    committed_authors = {author for author, _, _ in committed}
+                    committed_authors = {a for a, _, _ in committed}
                     available = [p for p in available if p.position not in committed_authors]
                     for author, exit_point, _ in committed:
                         assigned.add(author)
@@ -438,10 +395,8 @@ class HeadfulBot(BenchmarkFactoryBot):
                 committed = []
                 immediate = False
             if not immediate:
-                allow_fresh_stage = progress <= 0 and (
-                    current_count < 12 or staged_count < max(4, pipeline_cap // 2)
-                )
-                if (progress <= 0 and not allow_fresh_stage) or staged_count >= pipeline_cap:
+                allow_fresh_stage = progress <= 0 and (current_count < 12 or staged_count < max(4, 10))
+                if (progress <= 0 and not allow_fresh_stage) or staged_count >= 15:
                     for _, exit_point, _ in committed:
                         used_exits[exit_point] -= 1
                     continue
@@ -467,7 +422,7 @@ class HeadfulBot(BenchmarkFactoryBot):
                 if not committed:
                     continue
 
-            committed_authors = {author for author, _, _ in committed}
+            committed_authors = {a for a, _, _ in committed}
             available = [p for p in available if p.position not in committed_authors]
             for author, exit_point, _ in committed:
                 assigned.add(author)
@@ -480,135 +435,117 @@ class HeadfulBot(BenchmarkFactoryBot):
             elif progress <= 0:
                 staged_count += 1
 
-    def _maybe_relocate_hq_headful(
+    # ------------------------------------------------------------------
+    #  Leapfrog HQ Relocate
+    # ------------------------------------------------------------------
+    def _maybe_relocate_hq_caterpillar(
         self,
         state: GameState,
         cmd: Command,
         own_positions: set[Position],
         plant_by_pos: dict[Position, object],
-        hq: object,
+        hq,
         terraform_by_pos: dict[Position, object],
-        predictions,
+        vec_x: float,
+        vec_y: float,
     ) -> None:
-        """Proactive HQ relocation based on head plan and temporal predictions."""
-        # First check factory emergency conditions
-        terraform_progress = 0
+        if self._relocate_cooldown > 0:
+            return
+
+        hq_progress = 0
         for cell in state.terraformed_cells:
             if cell.position == hq.position:
-                terraform_progress = cell.terraformation_progress
+                hq_progress = cell.terraformation_progress
                 break
+
         beaver_dist = self._nearest_beaver_distance(hq.position, state.beavers)
         safe_neighbors = self._count_safe_hq_neighbors(hq, own_positions, state)
-        emergency = terraform_progress >= 55 or hq.hp < 25 or beaver_dist <= 2 or safe_neighbors < 1
 
-        # Proactive relocate: if we have a ready successor in head plan
-        proactive = False
-        best_candidate = None
-        if len(self._head_plan) >= 2 and not emergency:
-            successor = self._head_plan[1]
-            if successor in own_positions:
-                succ_plant = plant_by_pos.get(successor)
-                if succ_plant is not None and not succ_plant.is_isolated:
-                    succ_terraform = terraform_by_pos.get(successor)
-                    succ_progress = succ_terraform.terraformation_progress if succ_terraform else 0
-                    # Proactive trigger: HQ progress >= 30 and successor is healthy/low progress
-                    if terraform_progress >= 30 and succ_progress < 35 and succ_plant.hp >= 30:
-                        proactive = True
-                        best_candidate = successor
+        must_relocate = (
+            hq_progress >= 20
+            or beaver_dist <= 2
+            or safe_neighbors < 1
+            or hq.hp < 25
+        )
+        should_relocate = (
+            state.turn_no % 10 == 0
+            and safe_neighbors < 2
+        )
 
-        # Also proactive if safe neighbors are critically low (< 2) and we have any good candidate
-        if not emergency and not proactive and safe_neighbors < 2:
-            best_score = -1.0
-            for nb in adjacent(hq.position):
-                if nb not in own_positions:
-                    continue
-                nb_plant = plant_by_pos.get(nb)
-                if nb_plant is None or nb_plant.is_isolated:
-                    continue
-                nb_cell = terraform_by_pos.get(nb)
-                progress = nb_cell.terraformation_progress if nb_cell else 0
-                if progress >= 40:
-                    continue
-                beaver_dist_nb = self._nearest_beaver_distance(nb, state.beavers)
-                if beaver_dist_nb <= 2:
-                    continue
-                score = nb_plant.hp * 2 + (40 - progress) * 4 + beaver_dist_nb * 12
-                if score > best_score:
-                    best_score = score
-                    best_candidate = nb
-            if best_candidate is not None:
-                proactive = True
+        if not must_relocate and not should_relocate:
+            return
 
-        if emergency or proactive:
-            if best_candidate is None:
-                # Fallback to factory logic
-                best_score = -1.0
-                for nb in adjacent(hq.position):
-                    if nb not in own_positions:
-                        continue
-                    nb_plant = plant_by_pos.get(nb)
-                    if nb_plant is None or nb_plant.is_isolated:
-                        continue
-                    nb_cell = terraform_by_pos.get(nb)
-                    progress = nb_cell.terraformation_progress if nb_cell else 0
-                    if progress >= 55:
-                        continue
-                    beaver_dist = self._nearest_beaver_distance(nb, state.beavers)
-                    if beaver_dist <= 2:
-                        continue
-                    neighbor_count = sum(1 for n in adjacent(nb) if n in own_positions)
-                    score = nb_plant.hp * 2 + neighbor_count * 20 + (55 - progress) * 4 + beaver_dist * 12
-                    if score > best_score:
-                        best_score = score
-                        best_candidate = nb
-            if best_candidate is not None:
-                cmd.relocate_main(hq.position, best_candidate)
+        best = None
+        best_score = -1.0
+        for nb in adjacent(hq.position):
+            if nb not in own_positions:
+                continue
+            nb_plant = plant_by_pos.get(nb)
+            if nb_plant is None or nb_plant.is_isolated:
+                continue
+            nb_cell = terraform_by_pos.get(nb)
+            progress = nb_cell.terraformation_progress if nb_cell else 0
+            if progress >= 30:
+                continue
+            beaver_dist_nb = self._nearest_beaver_distance(nb, state.beavers)
+            if beaver_dist_nb <= 2:
+                continue
 
-    def _assign_lodge_attacks_headful(
+            direction_bonus = self._dot_with_vector(nb, hq.position, vec_x, vec_y) * 20.0
+            neighbor_count = sum(1 for n in adjacent(nb) if n in own_positions)
+            score = (30 - progress) * 8 + neighbor_count * 15 + nb_plant.hp * 2 + direction_bonus
+
+            if score > best_score:
+                best_score = score
+                best = nb
+
+        if best is not None:
+            cmd.relocate_main(hq.position, best)
+            self._relocate_cooldown = 3
+
+    # ------------------------------------------------------------------
+    #  Lodge Attacks
+    # ------------------------------------------------------------------
+    def _assign_lodge_attacks(
         self,
         state: GameState,
         cmd: Command,
         assigned: set[Position],
         own_positions: set[Position],
-        hq: object,
+        hq,
     ) -> None:
-        """Aggressively attack beaver lodges that threaten our network.
-        Uses remembered lodge positions from previous vision."""
         lodges = list(self._known_lodges) + [b.position for b in state.beavers]
         if not lodges:
             return
 
         for lodge_pos in set(lodges):
-            # Only attack lodges near our network
-            min_dist = min(
-                (chebyshev(lodge_pos, op) for op in own_positions),
-                default=999,
-            )
+            min_dist = min((chebyshev(lodge_pos, op) for op in own_positions), default=999)
             if min_dist > 8:
                 continue
 
-            attackers: list[tuple[Position, Position, int]] = []
+            attackers: list[tuple[Position, Position]] = []
             for plant in state.plantations:
                 if plant.position in assigned or plant.is_isolated:
                     continue
-                exit_point = self._find_exit_point(plant.position, lodge_pos, own_positions, state)
+                exit_point = self._best_factory_exit(plant.position, lodge_pos, own_positions, state)
                 if exit_point is None:
                     continue
-                dmg = 10
-                attackers.append((plant.position, exit_point, dmg))
+                attackers.append((plant.position, exit_point))
 
             if not attackers:
                 continue
 
-            # Commit 1-3 attackers depending on lodge proximity
             max_attackers = 3 if min_dist <= 4 else 2 if min_dist <= 6 else 1
-            for author, exit_point, _ in attackers[:max_attackers]:
+            for author, exit_point in attackers[:max_attackers]:
                 assigned.add(author)
                 if exit_point == author:
                     cmd.attack_beaver(author, lodge_pos)
                 else:
                     cmd.attack_beaver_via(author, exit_point, lodge_pos)
 
+    # ------------------------------------------------------------------
+    #  Helpers
+    # ------------------------------------------------------------------
     def _count_safe_hq_neighbors(self, hq, own_positions: set[Position], state: GameState) -> int:
         safe = 0
         for nb in adjacent(hq.position):
@@ -618,7 +555,9 @@ class HeadfulBot(BenchmarkFactoryBot):
             progress = cell.terraformation_progress if cell else 0
             if progress >= 55:
                 continue
-            beaver_dist = self._nearest_beaver_distance(nb, state.beavers)
+            beaver_dist = 999
+            for b in state.beavers:
+                beaver_dist = min(beaver_dist, chebyshev(nb, b.position))
             if beaver_dist <= 2:
                 continue
             safe += 1

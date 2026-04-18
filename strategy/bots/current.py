@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from strategy.bots.benchmarks import BenchmarkFactoryBot
+from strategy.bots.headful import HeadfulBot
 
 
-class CurrentBot(BenchmarkFactoryBot):
+class CurrentBot(HeadfulBot):
     name = "current"
