@@ -3,8 +3,12 @@ services:
     build: .
     command: uv run python main.py
     env_file: .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      LOG_DIR: "/app/logs"
     volumes:
       - game-data:/app/data
+      - ./logs:/app/logs
     restart: unless-stopped
 
   view:

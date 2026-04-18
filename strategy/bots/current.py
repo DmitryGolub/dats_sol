@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from strategy.bots.benchmarks import BenchmarkFactoryBot
+from strategy.bots.throughput import ThroughputBot
 
 
-class CurrentBot(BenchmarkFactoryBot):
+class CurrentBot(ThroughputBot):
     name = "current"

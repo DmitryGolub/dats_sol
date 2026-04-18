@@ -15,6 +15,7 @@ def get_all_bots() -> dict[str, type[BaseStrategy]]:
     bots: dict[str, type[BaseStrategy]] = {}
 
     from strategy.bots.current import CurrentBot
+    from strategy.bots.throughput import ThroughputBot
     from strategy.bots.benchmarks import (
         BenchmarkBlobBot,
         BenchmarkFactoryBot,
@@ -24,6 +25,7 @@ def get_all_bots() -> dict[str, type[BaseStrategy]]:
         BenchmarkStableBot,
     )
     bots[CurrentBot.name] = CurrentBot
+    bots[ThroughputBot.name] = ThroughputBot
     bots[BenchmarkReinforcedBot.name] = BenchmarkReinforcedBot
     bots[BenchmarkStableBot.name] = BenchmarkStableBot
     bots[BenchmarkOverdriveBot.name] = BenchmarkOverdriveBot
