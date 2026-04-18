@@ -15,7 +15,21 @@ def get_all_bots() -> dict[str, type[BaseStrategy]]:
     bots: dict[str, type[BaseStrategy]] = {}
 
     from strategy.bots.current import CurrentBot
+    from strategy.bots.benchmarks import (
+        BenchmarkBlobBot,
+        BenchmarkFactoryBot,
+        BenchmarkMillionBot,
+        BenchmarkOverdriveBot,
+        BenchmarkReinforcedBot,
+        BenchmarkStableBot,
+    )
     bots[CurrentBot.name] = CurrentBot
+    bots[BenchmarkReinforcedBot.name] = BenchmarkReinforcedBot
+    bots[BenchmarkStableBot.name] = BenchmarkStableBot
+    bots[BenchmarkOverdriveBot.name] = BenchmarkOverdriveBot
+    bots[BenchmarkMillionBot.name] = BenchmarkMillionBot
+    bots[BenchmarkBlobBot.name] = BenchmarkBlobBot
+    bots[BenchmarkFactoryBot.name] = BenchmarkFactoryBot
 
     snapshots_dir = Path(__file__).parent / "snapshots"
     if snapshots_dir.exists():

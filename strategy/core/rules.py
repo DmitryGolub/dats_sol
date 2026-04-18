@@ -5,6 +5,7 @@ from collections import defaultdict
 from api.models import Command, PlantationAction, Position
 from .state import (
     BUILD_THRESHOLD,
+    BEAVER_LODGE_REWARD_MULTIPLIER,
     CELL_DEGRADE_DELAY,
     CELL_DEGRADE_SPEED,
     DEFAULT_AR,
@@ -227,6 +228,10 @@ def _phase_repair_build(world: WorldState, classified: dict[str, dict[str, list]
                 del world.constructions[(cell, owner)]
             continue
         owner = owners[0]
+        # Клетка уже занята — стройка невозможна
+        if any(p.position == cell for p in world.plantations.values()):
+            del world.constructions[(cell, owner)]
+            continue
         ps = world.players[owner]
         # Проверка лимита (включая изолированные)
         own_count = sum(1 for p in world.plantations.values() if p.owner == owner)
@@ -247,10 +252,9 @@ def _phase_repair_build(world: WorldState, classified: dict[str, dict[str, list]
         )
         world.plantations[plant_id] = new_plant
         ps.built_plantations += 1
-        # очистить ВСЕ постройки на этой клетке (включая собственную)
-        to_del = [key for key in world.constructions.keys() if key[0] == cell]
-        for key in to_del:
-            del world.constructions[key]
+        # очистить собственную постройку на этой клетке
+        if (cell, owner) in world.constructions:
+            del world.constructions[(cell, owner)]
 
 
 # ---------- phase 3: sabotage ----------
@@ -340,7 +344,7 @@ def _phase_player_attack_lodges(world: WorldState, classified: dict[str, dict[st
     for lid in dead_lodges:
         lodge = world.beaver_lodges[lid]
         if lodge.damage_by:
-            reward = 10 * cell_max_points(lodge.position)
+            reward = BEAVER_LODGE_REWARD_MULTIPLIER * cell_max_points(lodge.position)
             max_dmg = max(lodge.damage_by.values())
             winners = [pid for pid, dmg in lodge.damage_by.items() if dmg == max_dmg]
             share = reward / len(winners)

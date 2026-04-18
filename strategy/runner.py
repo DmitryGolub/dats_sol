@@ -12,13 +12,16 @@ from strategy.core.rules import simulate_turn, MAX_TURNS
 
 log = logging.getLogger("runner")
 
+DEFAULT_TEST_MAP_WIDTH = 60
+DEFAULT_TEST_MAP_HEIGHT = 60
+
 
 def run_simulation(
     bot_name: str = "current",
     seed: int = 1,
     turns: int = MAX_TURNS,
-    width: int = 80,
-    height: int = 80,
+    width: int = DEFAULT_TEST_MAP_WIDTH,
+    height: int = DEFAULT_TEST_MAP_HEIGHT,
     mountain_density: float = 0.08,
     verbose: bool = False,
 ) -> dict:
@@ -37,8 +40,8 @@ def run_match(
     bot_names: list[str],
     seed: int = 1,
     turns: int = MAX_TURNS,
-    width: int = 80,
-    height: int = 80,
+    width: int = DEFAULT_TEST_MAP_WIDTH,
+    height: int = DEFAULT_TEST_MAP_HEIGHT,
     mountain_density: float = 0.08,
     verbose: bool = False,
 ) -> dict[str, dict]:
@@ -154,8 +157,8 @@ def main() -> None:
     parser.add_argument("--bots", default="current", help="Имена ботов через запятую (напр. current,v001)")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--turns", type=int, default=MAX_TURNS)
-    parser.add_argument("--width", type=int, default=80)
-    parser.add_argument("--height", type=int, default=80)
+    parser.add_argument("--width", type=int, default=DEFAULT_TEST_MAP_WIDTH)
+    parser.add_argument("--height", type=int, default=DEFAULT_TEST_MAP_HEIGHT)
     parser.add_argument("--density", type=float, default=0.08)
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
